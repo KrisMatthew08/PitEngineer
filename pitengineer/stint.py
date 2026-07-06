@@ -40,7 +40,7 @@ class StintMetrics:
 
     @staticmethod
     def from_laps(lap_times_ms: list[int]) -> "StintMetrics":
-        laps = sorted(t for t in lap_times_ms if t and t > 0)
+        laps = clean_laps(lap_times_ms)
         if not laps:
             return StintMetrics(0, None, None, None)
         n = len(laps)
@@ -74,7 +74,52 @@ class StintReport:
         lines.append(self.summary.describe())
         lines.append(self.gearing.describe())
         lines.append(self.profile.describe())
+        note = self.consistency_note()
+        if note:
+            lines.append(note)
         return "\n".join(lines)
+
+    def consistency_note(self) -> str:
+        """Attribute poor consistency to the CAR when it's clearly undriveable.
+
+        Low lap-to-lap consistency usually reads as a driver issue - but if the
+        tyres are overheating or the car has a strong imbalance, the car is
+        making the driver spin/miss, not the other way round. Say so, so the
+        engineer fixes the car instead of the app blaming the driver.
+        """
+        if self.profile.consistency >= 0.35:
+            return ""
+        s = self.summary
+        hottest = max(s.tyre_temp)
+        if hottest > 115 or abs(s.front_temp - s.rear_temp) > 20:
+            return (
+                "Note: your inconsistency is very likely the OVERHEATING tyres "
+                "losing grip (easy to spin, especially over kerbs) - that's the "
+                "CAR, not your driving. Cooling them / fixing the balance should "
+                "make the car easier to drive consistently."
+            )
+        if s.tendency_strength in ("moderate", "strong"):
+            return (
+                f"Note: your inconsistency is likely the car's {s.tendency_strength} "
+                f"{s.tendency} making it hard to place - fixing the balance should "
+                "steady your lap times, so treat this as a CAR problem, not driver "
+                "error."
+            )
+        return ""
+
+
+def clean_laps(lap_times_ms: list[int], outlier_factor: float = 1.4) -> list[int]:
+    """Sorted valid laps, dropping out-laps / in-laps / offs.
+
+    Any lap more than `outlier_factor` x the best is almost certainly not a
+    representative flying lap (pit out/in, a spin, going off) - excluding them
+    keeps median/spread/consistency meaningful.
+    """
+    laps = sorted(t for t in lap_times_ms if t and t > 0)
+    if not laps:
+        return []
+    best = laps[0]
+    return [lap for lap in laps if lap <= best * outlier_factor]
 
 
 def fmt_time(ms: int | None) -> str:

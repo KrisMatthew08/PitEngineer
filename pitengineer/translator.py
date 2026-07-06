@@ -222,7 +222,85 @@ def diagnose_autotune(
     )
 
     result = engine.propose(system, user, CHANGES_SCHEMA)
-    return _validate(result, setup, manifest)
+    diag = _validate(result, setup, manifest)
+
+    # Guard against a false "dialled in": if the model returns no changes but the
+    # telemetry shows a clear, unresolved problem, don't accept it - re-prompt
+    # forcefully, then fall back to a rule-based fix so the driver always gets
+    # something actionable when the car obviously isn't right.
+    if not diag.changes:
+        problem = _clear_problem(report)
+        if problem:
+            forced = user + (
+                f"\n\nYou returned NO changes, but the car is NOT dialled in: "
+                f"{problem}. You MUST propose at least one concrete change from the "
+                "adjustable list to address this. Do not return an empty list."
+            )
+            diag = _validate(engine.propose(system, forced, CHANGES_SCHEMA),
+                             setup, manifest)
+            if not diag.changes:
+                diag = _fallback_change(report, setup, manifest, problem)
+    return diag
+
+
+def _clear_problem(report) -> str | None:
+    """A short description of an obvious, unresolved problem - or None if fine."""
+    s = report.summary
+    if s.tendency in ("understeer", "oversteer") and s.tendency_strength in (
+            "moderate", "strong"):
+        return f"{s.tendency_strength} {s.tendency}"
+    delta = s.front_temp - s.rear_temp
+    if abs(delta) > 20:
+        end = "rear" if delta < 0 else "front"
+        return f"{end} tyres overheating ({abs(delta):.0f}C imbalance)"
+    if getattr(report, "gearing", None) and report.gearing.issue:
+        return report.gearing.issue.replace("_", " ")
+    return None
+
+
+def _fallback_change(report, setup: Setup, manifest: CarManifest,
+                     problem: str) -> Diagnosis:
+    """A guaranteed, conservative rule-based change for a clear problem.
+
+    Used only when the model twice refuses to propose anything. Moves one
+    sensible lever a single step in the correct direction.
+    """
+    s = report.summary
+    candidates: list[tuple[str, str]] = []
+    if s.tendency == "oversteer":
+        candidates += [("ARB_REAR", "dec"), ("ARB_R", "dec")]
+    elif s.tendency == "understeer":
+        candidates += [("ARB_FRONT", "dec"), ("ARB_F", "dec")]
+    if s.rear_temp - s.front_temp > 20:
+        candidates += [("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"),
+                       ("PRESSURE_LR", "dec")]
+    elif s.front_temp - s.rear_temp > 20:
+        candidates += [("PRESSURE_LF", "dec"), ("PRESSURE_RF", "dec")]
+
+    for sec, dirn in candidates:
+        p = manifest.get(sec)
+        cur = setup.get(sec)
+        if p is None or cur is None:
+            continue
+        new = p.clamp(cur - p.step) if dirn == "dec" else p.clamp(cur + p.step)
+        if new != cur:
+            word = "softer" if "ARB" in sec else "lower"
+            return Diagnosis(
+                text=f"The car has {problem} and the model didn't act, so here's "
+                     "a conservative first step.",
+                changes=[Change(
+                    section=sec, label=p.label, current_index=cur,
+                    proposed_index=new,
+                    reason=f"Conservative fix for {problem}: nudge {p.label} "
+                           f"{word} by one step.",
+                    confidence="low", clamped=False,
+                )],
+            )
+    return Diagnosis(
+        text=f"The car shows {problem}, but no safe automatic lever was found - "
+             "adjust it manually or try the Claude engine.",
+        changes=[],
+    )
 
 
 def diagnose_from_telemetry(

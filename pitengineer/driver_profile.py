@@ -136,6 +136,9 @@ def _frac(samples: list, pred) -> float:
 
 
 def _consistency_from_laps(lap_times_ms: list[int] | None) -> float:
+    # Use ALL laps here (do NOT filter out spins/offs): those ARE the
+    # inconsistency. A spin is a real repeatability failure - StintReport then
+    # decides whether to blame the car (overheating/imbalance) or the driver.
     laps = [t for t in (lap_times_ms or []) if t and t > 0]
     if len(laps) < 2:
         return 0.5  # unknown -> neutral
