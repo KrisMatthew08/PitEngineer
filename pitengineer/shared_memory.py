@@ -296,3 +296,10 @@ def session_status() -> str:
             return tele.read_graphics().status
     except (OSError, FileNotFoundError):
         return "OFF"
+
+
+def read_car_track() -> tuple[str, str]:
+    """(car_id, track_id) from the running game. Raises if AC isn't running."""
+    with ACTelemetry() as tele:
+        s = tele.read_static()
+        return s.car_model, s.track

@@ -13,9 +13,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from ac_setup_ai.manifest import load_manifest
-from ac_setup_ai.setup_file import load_setup, write_setup
-from ac_setup_ai.translator import _validate
+from pitengineer.manifest import load_manifest
+from pitengineer.setup_file import load_setup, write_setup
+from pitengineer.translator import _validate
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLE = ROOT / "data" / "sample_setup.ini"

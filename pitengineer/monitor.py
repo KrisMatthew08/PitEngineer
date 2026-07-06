@@ -2,7 +2,7 @@
 
 Start Assetto Corsa, get into a session (driving, not the menu), then run:
 
-    python -m ac_setup_ai.monitor
+    python -m pitengineer.monitor
 
 It prints live values ~10x/second. If speed tracks your car, tyre temps sit in
 a plausible range (roughly 60-110 C when warm), and throttle/brake move with

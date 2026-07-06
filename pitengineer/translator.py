@@ -134,6 +134,80 @@ def diagnose(
     return _validate(result, setup, manifest)
 
 
+def diagnose_autotune(
+    report,
+    verdict,
+    setup: Setup,
+    manifest: CarManifest,
+    engine: Engine | None = None,
+    last_change: dict[str, tuple[int, int]] | None = None,
+) -> Diagnosis:
+    """The auto-tune brain: one iteration of the loop.
+
+    Inputs:
+      report      - stint.StintReport (balance + lap metrics + driver profile)
+      verdict     - session_log.Verdict on whether the LAST change helped (or None)
+      last_change - the exact change applied before this stint {section: (old,new)}
+
+    It personalises to the driver's style, weighs lap-time + balance, reacts to
+    whether the last change worked, and proposes the next change(s) - or none if
+    the car is dialled in.
+    """
+    engine = engine or make_engine("ollama")
+
+    grounding = format_for_prompt(relevant_entries(report.summary.tendency))
+    setup_context = _build_setup_context(setup, manifest)
+    verdict_text = verdict.text if verdict is not None else "This is the first stint (baseline)."
+    bias = report.profile.setup_bias()
+
+    # Spell out exactly what was changed last, so revert/keep is grounded.
+    if last_change:
+        change_lines = "\n".join(
+            f"  - {sec}: {old} -> {new}" for sec, (old, new) in last_change.items()
+        )
+        last_change_text = (
+            f"The change you made before this stint was:\n{change_lines}\n"
+            "If it did NOT help, move that parameter back toward its old value or "
+            "pick a different lever - do not repeat a change that just failed. "
+            "If it helped, you may continue in the same direction."
+        )
+    else:
+        last_change_text = "No change was made before this stint (this is a baseline read)."
+
+    system = (
+        "You are an expert Assetto Corsa race engineer running an iterative "
+        "auto-tune session for one driver. Each stint you get: the car's measured "
+        "behaviour, the driver's style, and whether your LAST change helped. Your "
+        "job is to move the setup toward being faster AND more balanced FOR THIS "
+        "DRIVER, one careful step at a time.\n"
+        "Follow the vehicle-dynamics grounding directions - they are correct "
+        "(e.g. to cure understeer, SOFTEN the front anti-roll bar, do not stiffen "
+        "it). Propose only a few high-impact changes in small steps; only use "
+        "adjustable parameters and keep every proposed_index in range. If the last "
+        "change did not help, reconsider or revert it rather than pushing further. "
+        "If the car is already balanced (front and rear slip close, tyre temps "
+        "even) and lap times have stopped improving, return an EMPTY changes list "
+        "and state it is dialled in. Tailor everything to the driver's style. "
+        "Respond only with the structured JSON (diagnosis + changes)."
+    )
+
+    user = (
+        f"Car: {manifest.display_name}\n\n"
+        f"{last_change_text}\n\n"
+        f"Result of the last change: {verdict_text}\n\n"
+        f"This stint's telemetry:\n{report.describe()}\n\n"
+        f"How to bias the setup for THIS driver:\n{bias}\n\n"
+        f"Vehicle-dynamics grounding (symptom -> likely levers, follow these "
+        f"directions):\n{grounding}\n\n"
+        f"Current setup and legal ranges (index space):\n{setup_context}\n\n"
+        "Decide the next step: either propose the next change(s), or return an "
+        "empty changes list if it's dialled in."
+    )
+
+    result = engine.propose(system, user, CHANGES_SCHEMA)
+    return _validate(result, setup, manifest)
+
+
 def diagnose_from_telemetry(
     summary,
     setup: Setup,

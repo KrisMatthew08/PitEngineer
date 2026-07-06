@@ -50,6 +50,8 @@ def list_cars(setups_dir: Path | None = None) -> list[str]:
 
 def discover_setup_files(car_id: str, setups_dir: Path | None = None) -> list[Path]:
     """All .ini setup files for a car, across every track folder."""
+    if not car_id or not car_id.strip():
+        return []  # empty car id (e.g. AC not running) - never scan everything
     setups_dir = setups_dir or default_setups_dir()
     car_dir = setups_dir / car_id
     if not car_dir.exists():
@@ -150,6 +152,31 @@ def build_manifest_from_setups(
         display_name=display_name or car_id,
         parameters=params,
     )
+
+
+def find_current_setup(
+    car_id: str,
+    track_id: str,
+    setups_dir: Path | None = None,
+) -> Path | None:
+    """Best guess at the setup the driver is using: most recently modified .ini
+    in the car+track folder, falling back to the car's other setups.
+
+    AC doesn't expose the loaded setup's filename via shared memory, so we use
+    recency, which reliably matches the setup you were just editing/racing.
+    """
+    if not car_id or not car_id.strip():
+        return None
+    setups_dir = setups_dir or default_setups_dir()
+    track_dir = setups_dir / car_id / track_id
+    candidates: list[Path] = []
+    if track_dir.exists():
+        candidates = list(track_dir.glob("*.ini"))
+    if not candidates:  # fall back to any setup for this car
+        candidates = discover_setup_files(car_id, setups_dir)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def save_manifest(manifest: CarManifest, out_path: str | Path) -> Path:

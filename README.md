@@ -35,7 +35,7 @@ parameters are dropped. Your original setup is backed up before any write.
 ## Run it (against the bundled sample)
 
 ```
-python -m ac_setup_ai.app --setup data/sample_setup.ini --manifest data/manifests/generic_gt3.json
+python -m pitengineer.app --setup data/sample_setup.ini --manifest data/manifests/generic_gt3.json
 ```
 
 Then type things like:
@@ -53,7 +53,7 @@ You'll get a diagnosis, a ranked before/after diff, and a `[y/N]` apply prompt.
    section names must match the ones in the `.ini`.
 3. Point the app at both:
    ```
-   python -m ac_setup_ai.app --setup "<path to your .ini>" --manifest "<your manifest>.json"
+   python -m pitengineer.app --setup "<path to your .ini>" --manifest "<your manifest>.json"
    ```
 4. After applying, **re-select / reload the setup in the pits** for it to take effect.
 
@@ -61,11 +61,11 @@ You'll get a diagnosis, a ranked before/after diff, and a `[y/N]` apply prompt.
 
 | File | Role |
 | --- | --- |
-| `ac_setup_ai/setup_file.py` | Parse + safely write AC setup `.ini` (index space, backups) |
-| `ac_setup_ai/manifest.py` | Car adjustability manifest — the legal-range guardrail |
-| `ac_setup_ai/knowledge.py` | Symptom → cause → lever grounding for the model |
-| `ac_setup_ai/translator.py` | The AI layer: complaint → validated changes (tool-use) |
-| `ac_setup_ai/app.py` | CLI: chat, diff, apply |
+| `pitengineer/setup_file.py` | Parse + safely write AC setup `.ini` (index space, backups) |
+| `pitengineer/manifest.py` | Car adjustability manifest — the legal-range guardrail |
+| `pitengineer/knowledge.py` | Symptom → cause → lever grounding for the model |
+| `pitengineer/translator.py` | The AI layer: complaint → validated changes (tool-use) |
+| `pitengineer/app.py` | CLI: chat, diff, apply |
 | `data/` | Sample setup + a generic GT3 manifest |
 
 ## Status & limitations

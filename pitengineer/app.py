@@ -1,7 +1,7 @@
 """Command-line Translator: describe the problem, get validated changes, apply.
 
 Usage:
-    python -m ac_setup_ai.app --setup data/sample_setup.ini \\
+    python -m pitengineer.app --setup data/sample_setup.ini \\
         --manifest data/manifests/generic_gt3.json
 
 Then type how the car feels (e.g. "rear steps out on power exit"). The app
