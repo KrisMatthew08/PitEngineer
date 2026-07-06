@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field
 
 from .driver_profile import DriverProfile, compute_profile
+from .gearing import GearingReport, analyze_gearing
 from .shared_memory import ACTelemetry, PhysicsSnapshot
 from .summarizer import TelemetrySummary, summarize
 
@@ -27,6 +28,7 @@ from .summarizer import TelemetrySummary, summarize
 class StintData:
     samples: list[PhysicsSnapshot] = field(default_factory=list)
     lap_times_ms: list[int] = field(default_factory=list)  # completed laps this stint
+    car_max_rpm: int = 0  # redline, read from the static block at stint start
 
 
 @dataclass
@@ -56,6 +58,7 @@ class StintReport:
     metrics: StintMetrics
     summary: TelemetrySummary
     profile: DriverProfile
+    gearing: "GearingReport"
 
     def describe(self) -> str:
         m = self.metrics
@@ -69,6 +72,7 @@ class StintReport:
         else:
             lines.append("No completed laps captured this stint.")
         lines.append(self.summary.describe())
+        lines.append(self.gearing.describe())
         lines.append(self.profile.describe())
         return "\n".join(lines)
 
@@ -108,6 +112,7 @@ class StintRecorder:
         period = 1.0 / self._rate
         try:
             with ACTelemetry() as tele:
+                self.data.car_max_rpm = tele.read_static().max_rpm
                 last_completed = tele.read_graphics().completed_laps
                 while not self._stop.is_set():
                     self.data.samples.append(tele.read_physics())
@@ -127,4 +132,5 @@ def analyze(data: StintData) -> StintReport:
         metrics=StintMetrics.from_laps(data.lap_times_ms),
         summary=summarize(data.samples),
         profile=compute_profile(data.samples, data.lap_times_ms),
+        gearing=analyze_gearing(data.samples, data.car_max_rpm),
     )

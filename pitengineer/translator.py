@@ -155,7 +155,11 @@ def diagnose_autotune(
     """
     engine = engine or make_engine("ollama")
 
-    grounding = format_for_prompt(relevant_entries(report.summary.tendency))
+    # Always include gearing/aero levers alongside the balance-specific ones -
+    # lap time often lives in gears and wings, not just the anti-roll bar.
+    from .knowledge import LAP_TIME_LEVERS
+    entries = relevant_entries(report.summary.tendency) + [LAP_TIME_LEVERS]
+    grounding = format_for_prompt(entries)
     setup_context = _build_setup_context(setup, manifest)
     verdict_text = verdict.text if verdict is not None else "This is the first stint (baseline)."
     bias = report.profile.setup_bias()
@@ -178,21 +182,34 @@ def diagnose_autotune(
         "You are an expert Assetto Corsa race engineer running an iterative "
         "auto-tune session for one driver. Each stint you get: the car's measured "
         "behaviour, the driver's style, and whether your LAST change helped. Your "
-        "job is to move the setup toward being faster AND more balanced FOR THIS "
-        "DRIVER, one careful step at a time.\n"
+        "job is to move the setup toward being FASTER (lower lap time) and more "
+        "balanced FOR THIS DRIVER, one careful step at a time.\n"
+        "Prioritise the change that gains the most LAP TIME, not just comfort. "
+        "Weigh ALL levers: GEARING (bouncing off the rev limiter = gears too "
+        "short; never reaching redline in top gear = too tall) and AERO/WINGS "
+        "(less wing = more top speed but less cornering grip) are often bigger "
+        "lap-time gains than an anti-roll bar tweak, especially on power tracks "
+        "and aero cars - use the gearing/aero read in the telemetry above. Only "
+        "spend a change on balance (ARB/diff/camber) when the handling is "
+        "genuinely costing time or confidence.\n"
         "Follow the vehicle-dynamics grounding directions - they are correct "
-        "(e.g. to cure understeer, SOFTEN the front anti-roll bar, do not stiffen "
-        "it). Propose only a few high-impact changes in small steps; only use "
-        "adjustable parameters and keep every proposed_index in range. If the last "
-        "change did not help, reconsider or revert it rather than pushing further. "
-        "If the car is already balanced (front and rear slip close, tyre temps "
-        "even) and lap times have stopped improving, return an EMPTY changes list "
-        "and state it is dialled in. Tailor everything to the driver's style. "
-        "Respond only with the structured JSON (diagnosis + changes)."
+        "(e.g. to cure understeer, SOFTEN the front anti-roll bar). Propose only a "
+        "few high-impact changes in small steps; only use adjustable parameters "
+        "and keep every proposed_index in range. If the last change did not help, "
+        "reconsider or revert it. If the car is fast and balanced and lap times "
+        "have plateaued, return an EMPTY changes list and state it is dialled in. "
+        "Tailor everything to the driver's style. Respond only with the structured "
+        "JSON (diagnosis + changes)."
     )
+
+    # If code detected a clear gearing problem, force it to the top so the model
+    # can't overlook it in favour of the vivid balance signal.
+    priority = report.gearing.priority_note()
+    priority_block = f"{priority}\n\n" if priority else ""
 
     user = (
         f"Car: {manifest.display_name}\n\n"
+        f"{priority_block}"
         f"{last_change_text}\n\n"
         f"Result of the last change: {verdict_text}\n\n"
         f"This stint's telemetry:\n{report.describe()}\n\n"

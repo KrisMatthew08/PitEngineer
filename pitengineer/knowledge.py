@@ -116,6 +116,26 @@ KNOWLEDGE_BASE: list[KnowledgeEntry] = [
 ]
 
 
+# Lap-time levers (gearing + aero). Always relevant when optimising for pace,
+# so the auto-tune loop includes this in the grounding every stint.
+LAP_TIME_LEVERS = KnowledgeEntry(
+    symptom="Lap time on straights / gearing / aero (not a handling complaint)",
+    keywords=["gear", "gearing", "aero", "wing", "top speed", "straight",
+              "rev limiter", "redline", "drag", "downforce"],
+    cause="Gears mismatched to the track, or wing level trading straight speed "
+          "against cornering grip.",
+    levers=[
+        ("GEARSET", "either", "Pick a gearset that reaches redline near the end of the longest straight."),
+        ("FINAL_GEAR_RATIO", "either", "Taller final = more top speed; shorter = more acceleration."),
+        ("GEAR_1", "either", "Lengthen a gear that hits the limiter too early; shorten one that bogs."),
+        ("WING_REAR", "either", "Less rear wing raises top speed (less drag); more adds cornering grip."),
+        ("WING_1", "either", "Less wing raises top speed; more adds cornering downforce."),
+        ("WING_9", "either", "Less wing raises top speed; more adds cornering downforce."),
+        ("WING_FRONT", "either", "Balance front aero with rear to keep the car neutral at speed."),
+    ],
+)
+
+
 def relevant_entries(complaint: str) -> list[KnowledgeEntry]:
     """Return knowledge entries whose keywords appear in the complaint/tendency.
 
