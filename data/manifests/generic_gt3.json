@@ -1,0 +1,23 @@
+{
+  "car_id": "generic_gt3",
+  "display_name": "Generic GT3 (sample)",
+  "parameters": {
+    "PRESSURE_LF": {"label": "Front-left tyre pressure", "min": 0, "max": 30, "step": 1, "unit": "psi", "value_at_min": 17.0, "value_per_step": 0.5, "group": "tyres"},
+    "PRESSURE_RF": {"label": "Front-right tyre pressure", "min": 0, "max": 30, "step": 1, "unit": "psi", "value_at_min": 17.0, "value_per_step": 0.5, "group": "tyres"},
+    "PRESSURE_LR": {"label": "Rear-left tyre pressure", "min": 0, "max": 30, "step": 1, "unit": "psi", "value_at_min": 17.0, "value_per_step": 0.5, "group": "tyres"},
+    "PRESSURE_RR": {"label": "Rear-right tyre pressure", "min": 0, "max": 30, "step": 1, "unit": "psi", "value_at_min": 17.0, "value_per_step": 0.5, "group": "tyres"},
+    "CAMBER_LF": {"label": "Front-left camber", "min": 0, "max": 20, "step": 1, "unit": "deg", "value_at_min": -1.5, "value_per_step": -0.1, "group": "alignment"},
+    "CAMBER_RF": {"label": "Front-right camber", "min": 0, "max": 20, "step": 1, "unit": "deg", "value_at_min": -1.5, "value_per_step": -0.1, "group": "alignment"},
+    "CAMBER_LR": {"label": "Rear-left camber", "min": 0, "max": 20, "step": 1, "unit": "deg", "value_at_min": -1.0, "value_per_step": -0.1, "group": "alignment"},
+    "CAMBER_RR": {"label": "Rear-right camber", "min": 0, "max": 20, "step": 1, "unit": "deg", "value_at_min": -1.0, "value_per_step": -0.1, "group": "alignment"},
+    "ARB_FRONT": {"label": "Front anti-roll bar", "min": 0, "max": 10, "step": 1, "unit": "click", "value_at_min": 1, "value_per_step": 1, "group": "arb"},
+    "ARB_REAR": {"label": "Rear anti-roll bar", "min": 0, "max": 10, "step": 1, "unit": "click", "value_at_min": 1, "value_per_step": 1, "group": "arb"},
+    "WING_FRONT": {"label": "Front wing / splitter", "min": 0, "max": 6, "step": 1, "unit": "click", "value_at_min": 0, "value_per_step": 1, "group": "aero"},
+    "WING_REAR": {"label": "Rear wing", "min": 0, "max": 12, "step": 1, "unit": "click", "value_at_min": 0, "value_per_step": 1, "group": "aero"},
+    "BRAKE_BIAS": {"label": "Brake bias (higher = more front)", "min": 0, "max": 40, "step": 1, "unit": "%front-ish", "value_at_min": 50.0, "value_per_step": 0.25, "group": "brakes"},
+    "DIFF_POWER": {"label": "Differential power lock", "min": 0, "max": 100, "step": 5, "unit": "%", "value_at_min": 0, "value_per_step": 1, "group": "diff"},
+    "DIFF_COAST": {"label": "Differential coast lock", "min": 0, "max": 100, "step": 5, "unit": "%", "value_at_min": 0, "value_per_step": 1, "group": "diff"},
+    "HEIGHT_F": {"label": "Front ride height", "min": 0, "max": 30, "step": 1, "unit": "mm", "value_at_min": 50.0, "value_per_step": 1.0, "group": "ride"},
+    "HEIGHT_R": {"label": "Rear ride height", "min": 0, "max": 30, "step": 1, "unit": "mm", "value_at_min": 55.0, "value_per_step": 1.0, "group": "ride"}
+  }
+}

@@ -1,0 +1,426 @@
+{
+  "car_id": "rss_gtm_protech_p92_f6",
+  "display_name": "RSS GTM Protech P92",
+  "parameters": {
+    "ABS": {
+      "label": "Abs",
+      "min": 1,
+      "max": 12,
+      "step": 1,
+      "group": "brakes"
+    },
+    "ARB_F": {
+      "label": "Arb front",
+      "min": 5,
+      "max": 7,
+      "step": 1,
+      "group": "arb"
+    },
+    "ARB_R": {
+      "label": "Arb rear",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "group": "arb"
+    },
+    "BRAKE_DUCT_F": {
+      "label": "Brake duct front",
+      "min": 0,
+      "max": 100,
+      "step": 2,
+      "group": "brakes"
+    },
+    "BRAKE_DUCT_R": {
+      "label": "Brake duct rear",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "group": "brakes"
+    },
+    "BRAKE_POWER_MULT": {
+      "label": "Brake power mult",
+      "min": 100,
+      "max": 115,
+      "step": 15,
+      "group": "brakes"
+    },
+    "CAMBER_LF": {
+      "label": "Camber FL",
+      "min": -40,
+      "max": -28,
+      "step": 1,
+      "group": "alignment"
+    },
+    "CAMBER_LR": {
+      "label": "Camber RL",
+      "min": -35,
+      "max": -25,
+      "step": 1,
+      "group": "alignment"
+    },
+    "CAMBER_RF": {
+      "label": "Camber FR",
+      "min": -40,
+      "max": -28,
+      "step": 1,
+      "group": "alignment"
+    },
+    "CAMBER_RR": {
+      "label": "Camber RR",
+      "min": -35,
+      "max": -25,
+      "step": 1,
+      "group": "alignment"
+    },
+    "DAMP_BUMP_LF": {
+      "label": "Damp bump FL",
+      "min": 3,
+      "max": 10,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_BUMP_LR": {
+      "label": "Damp bump RL",
+      "min": 4,
+      "max": 7,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_BUMP_RF": {
+      "label": "Damp bump FR",
+      "min": 3,
+      "max": 10,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_BUMP_RR": {
+      "label": "Damp bump RR",
+      "min": 4,
+      "max": 7,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_BUMP_LF": {
+      "label": "Damp fast bump FL",
+      "min": 3,
+      "max": 9,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_BUMP_LR": {
+      "label": "Damp fast bump RL",
+      "min": 2,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_BUMP_RF": {
+      "label": "Damp fast bump FR",
+      "min": 3,
+      "max": 9,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_BUMP_RR": {
+      "label": "Damp fast bump RR",
+      "min": 2,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_REBOUND_LF": {
+      "label": "Damp fast rebound FL",
+      "min": 3,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_REBOUND_LR": {
+      "label": "Damp fast rebound RL",
+      "min": 5,
+      "max": 7,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_REBOUND_RF": {
+      "label": "Damp fast rebound FR",
+      "min": 3,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_FAST_REBOUND_RR": {
+      "label": "Damp fast rebound RR",
+      "min": 5,
+      "max": 7,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_REBOUND_LF": {
+      "label": "Damp rebound FL",
+      "min": 3,
+      "max": 9,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_REBOUND_LR": {
+      "label": "Damp rebound RL",
+      "min": 4,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_REBOUND_RF": {
+      "label": "Damp rebound FR",
+      "min": 3,
+      "max": 9,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DAMP_REBOUND_RR": {
+      "label": "Damp rebound RR",
+      "min": 4,
+      "max": 8,
+      "step": 1,
+      "group": "dampers"
+    },
+    "DIFF_PRELOAD": {
+      "label": "Diff preload",
+      "min": 80,
+      "max": 300,
+      "step": 1,
+      "group": "diff"
+    },
+    "FRONT_BIAS": {
+      "label": "Front bias",
+      "min": 60,
+      "max": 70,
+      "step": 1,
+      "group": "brakes"
+    },
+    "GEARSET": {
+      "label": "Gearset",
+      "min": 0,
+      "max": 2,
+      "step": 1,
+      "group": "other"
+    },
+    "PACKER_RANGE_LF": {
+      "label": "Packer range FL",
+      "min": 35,
+      "max": 55,
+      "step": 1,
+      "group": "springs"
+    },
+    "PACKER_RANGE_LR": {
+      "label": "Packer range RL",
+      "min": 60,
+      "max": 86,
+      "step": 1,
+      "group": "springs"
+    },
+    "PACKER_RANGE_RF": {
+      "label": "Packer range FR",
+      "min": 35,
+      "max": 55,
+      "step": 1,
+      "group": "springs"
+    },
+    "PACKER_RANGE_RR": {
+      "label": "Packer range RR",
+      "min": 60,
+      "max": 86,
+      "step": 1,
+      "group": "springs"
+    },
+    "PRESSURE_LF": {
+      "label": "Pressure FL",
+      "min": 17,
+      "max": 28,
+      "step": 1,
+      "group": "tyres"
+    },
+    "PRESSURE_LR": {
+      "label": "Pressure RL",
+      "min": 17,
+      "max": 30,
+      "step": 1,
+      "group": "tyres"
+    },
+    "PRESSURE_RF": {
+      "label": "Pressure FR",
+      "min": 17,
+      "max": 28,
+      "step": 1,
+      "group": "tyres"
+    },
+    "PRESSURE_RR": {
+      "label": "Pressure RR",
+      "min": 17,
+      "max": 30,
+      "step": 1,
+      "group": "tyres"
+    },
+    "ROD_LENGTH_LF": {
+      "label": "Rod length FL",
+      "min": 115,
+      "max": 200,
+      "step": 1,
+      "group": "springs"
+    },
+    "ROD_LENGTH_LR": {
+      "label": "Rod length RL",
+      "min": 35,
+      "max": 260,
+      "step": 1,
+      "group": "springs"
+    },
+    "ROD_LENGTH_RF": {
+      "label": "Rod length FR",
+      "min": 115,
+      "max": 200,
+      "step": 1,
+      "group": "springs"
+    },
+    "ROD_LENGTH_RR": {
+      "label": "Rod length RR",
+      "min": 35,
+      "max": 260,
+      "step": 1,
+      "group": "springs"
+    },
+    "SPRING_LF": {
+      "label": "Spring FL",
+      "min": 2,
+      "max": 120,
+      "step": 1,
+      "group": "springs"
+    },
+    "SPRING_LR": {
+      "label": "Spring RL",
+      "min": 0,
+      "max": 95,
+      "step": 1,
+      "group": "springs"
+    },
+    "SPRING_RF": {
+      "label": "Spring FR",
+      "min": 2,
+      "max": 120,
+      "step": 1,
+      "group": "springs"
+    },
+    "SPRING_RR": {
+      "label": "Spring RR",
+      "min": 0,
+      "max": 95,
+      "step": 1,
+      "group": "springs"
+    },
+    "STEER_ASSIST": {
+      "label": "Steer assist",
+      "min": 85,
+      "max": 100,
+      "step": 5,
+      "group": "other"
+    },
+    "TOE_OUT_LF": {
+      "label": "Toe out FL",
+      "min": 0,
+      "max": 25,
+      "step": 1,
+      "group": "alignment"
+    },
+    "TOE_OUT_LR": {
+      "label": "Toe out RL",
+      "min": -20,
+      "max": 40,
+      "step": 2,
+      "group": "alignment"
+    },
+    "TOE_OUT_RF": {
+      "label": "Toe out FR",
+      "min": 0,
+      "max": 25,
+      "step": 1,
+      "group": "alignment"
+    },
+    "TOE_OUT_RR": {
+      "label": "Toe out RR",
+      "min": -20,
+      "max": 40,
+      "step": 2,
+      "group": "alignment"
+    },
+    "TRACTION_CONTROL": {
+      "label": "Traction control",
+      "min": 0,
+      "max": 9,
+      "step": 1,
+      "group": "other"
+    },
+    "TRACTION_CONTROL_2": {
+      "label": "Traction control 2",
+      "min": 0,
+      "max": 7,
+      "step": 1,
+      "group": "other"
+    },
+    "WING_1": {
+      "label": "Wing 1",
+      "min": 5,
+      "max": 12,
+      "step": 1,
+      "group": "aero"
+    },
+    "WING_9": {
+      "label": "Wing 9",
+      "min": 0,
+      "max": 100,
+      "step": 2,
+      "group": "aero"
+    },
+    "WING_10": {
+      "label": "Wing 10",
+      "min": 0,
+      "max": 100,
+      "step": 2,
+      "group": "aero"
+    },
+    "WING_13": {
+      "label": "Wing 13",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "group": "aero"
+    },
+    "WING_14": {
+      "label": "Wing 14",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "group": "aero"
+    },
+    "WING_15": {
+      "label": "Wing 15",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "group": "aero"
+    },
+    "WING_16": {
+      "label": "Wing 16",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "group": "aero"
+    },
+    "ENGINE_MAPS": {
+      "label": "Engine maps",
+      "min": 0,
+      "max": 6,
+      "step": 1,
+      "group": "other"
+    }
+  }
+}

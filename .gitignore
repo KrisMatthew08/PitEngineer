@@ -1,0 +1,26 @@
+# secrets / env
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# setup backups the app writes
+*.ini.bak
+
+# PyInstaller / packaging artifacts
+build/
+dist/
+*.spec
+
+# runtime data written by the app
+history/
+
+# generated per-car manifests (except the sample) are fine to keep, but ignore scratch
+data/manifests/_*.json
+
+# OS
+Thumbs.db
+desktop.ini
