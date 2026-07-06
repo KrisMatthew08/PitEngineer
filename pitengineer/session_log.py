@@ -88,6 +88,31 @@ class SessionMemory:
         records = self.load(car, track)
         return records[-1] if records else None
 
+    def progress(self, car: str, track: str) -> str:
+        """A one-line 'are we getting faster?' summary across the session.
+
+        The whole point is lower lap times - this makes the gain visible.
+        """
+        records = self.load(car, track)
+        bests = [r.best_lap_ms for r in records if r.best_lap_ms]
+        if not bests:
+            return ""
+        n = len(records)
+        session_best = min(bests)
+        opening = bests[0]
+        delta = session_best - opening
+        if n < 2:
+            return f"Session baseline: best {fmt_time(session_best)}."
+        if delta < -20:  # >0.02s faster than the opening stint
+            return (
+                f"Session progress: {n} stints, best {fmt_time(session_best)} "
+                f"({delta/1000:+.2f}s vs your opening stint - getting faster)."
+            )
+        return (
+            f"Session progress: {n} stints, best {fmt_time(session_best)} "
+            f"(no lap-time gain yet vs your opening stint)."
+        )
+
     def compare(self, prev: StintRecord | None, cur: StintRecord) -> Verdict:
         """Did the change between prev and cur help? Blend lap time + balance."""
         if prev is None or not prev.changes:

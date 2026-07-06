@@ -95,6 +95,9 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
         print(report.describe())
         if last_change:
             print("\n" + verdict.text)
+        prog = memory.progress(car, track)
+        if prog:
+            print(prog)
 
         print("\nWorking out the next step (this can take ~30-60s)...")
         try:

@@ -221,6 +221,9 @@ class AutoTuneApp:
         self._log(report.describe())
         if self.last_change:
             self._log("\n" + verdict.text)
+        prog = self.memory.progress(self.car, self.track)
+        if prog:
+            self._log(prog)
 
         if not diag.changes:
             self._log(f"\n>>> {diag.text}")
