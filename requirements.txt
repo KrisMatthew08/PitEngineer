@@ -1,1 +1,7 @@
-anthropic>=0.40
+# PitEngineer runs on the Python standard library alone for the default
+# (local Ollama) path: telemetry via ctypes, Ollama via urllib, GUI via tkinter.
+# So for normal use you don't need to install anything here.
+#
+# Optional extras — install only if you want them:
+#   Claude engine (--engine claude):   pip install "anthropic>=0.40"
+#   Build the .exe:                     pip install pyinstaller
