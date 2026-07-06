@@ -14,6 +14,7 @@ venv/
 build/
 dist/
 *.spec
+*.exe
 
 # runtime data written by the app
 history/
