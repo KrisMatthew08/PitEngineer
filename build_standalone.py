@@ -101,7 +101,7 @@ def build() -> int:
     cmd = [
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
         "--windowed", "--name", "PitEngineer",
-        "--add-binary", f"{STAGING/'ollama'}{sep}ollama",
+        "--add-data", f"{STAGING/'ollama'}{sep}ollama",
         "--add-data", f"{STAGING/'ollama_models'}{sep}ollama_models",
         "PitEngineer.py",
     ]
