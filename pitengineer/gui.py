@@ -18,6 +18,7 @@ from tkinter import messagebox, scrolledtext
 
 from .car_data import build_manifest_from_setups, find_current_setup
 from .engines import make_engine
+from .ollama_manager import BUNDLED_MODEL, bundled_model_name, ensure_running
 from .session_log import SessionMemory, StintRecord
 from .setup_file import load_setup, writable_target, write_setup
 from .shared_memory import read_car_track, session_status
@@ -61,6 +62,19 @@ class AutoTuneApp:
         self._fonts()
         self._build()
         self._poll_ac()
+        # Auto-start the bundled/system Ollama in the background so the user
+        # never has to launch it. Analysis + Full Setup Pass work regardless.
+        threading.Thread(target=self._start_ai, daemon=True).start()
+
+    def _start_ai(self) -> None:
+        self.root.after(0, self._status, "Starting AI engine…")
+        ok = ensure_running()
+        if ok:
+            self.root.after(0, self._status, "AI ready. Start AC, get on track, then Detect car.")
+        else:
+            self.root.after(0, self._status,
+                            "AI engine unavailable — analysis and Full Setup Pass "
+                            "still work without it.")
 
     # ---------- fonts ----------
     def _fonts(self) -> None:
@@ -399,8 +413,12 @@ def main() -> int:
     parser.add_argument("--model", default=None)
     args = parser.parse_args()
 
+    # Use whatever model is actually bundled; fall back to the default in dev.
+    model = args.model
+    if model is None and args.engine == "ollama":
+        model = bundled_model_name() or BUNDLED_MODEL
     root = tk.Tk()
-    AutoTuneApp(root, args.engine, args.model)
+    AutoTuneApp(root, args.engine, model)
     root.mainloop()
     return 0
 
