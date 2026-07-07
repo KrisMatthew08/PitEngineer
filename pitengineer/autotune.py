@@ -27,7 +27,7 @@ from .car_data import build_manifest_from_setups, find_current_setup
 from .engines import Engine, make_engine
 from .manifest import CarManifest
 from .session_log import SessionMemory, StintRecord
-from .setup_file import Setup, load_setup, write_setup
+from .setup_file import Setup, load_setup, writable_target, write_setup
 from .shared_memory import read_car_track, session_status
 from .stint import StintRecorder, analyze
 
@@ -138,14 +138,15 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
         ans = _prompt("Apply these changes and continue? [Y/n] ").lower()
         if ans in ("", "y", "yes"):
             changes = {c.section: c.proposed_index for c in diag.changes}
-            written = write_setup(setup, changes, backup=True)
+            target = writable_target(setup_path)
+            out = None if str(target) == str(setup_path) else target
+            written = write_setup(setup, changes, out_path=out, backup=True)
             last_change = {c.section: (c.current_index, c.proposed_index) for c in diag.changes}
-            setup = load_setup(setup_path)  # reload new baseline
-            print(f"\nApplied {len(changes)} change(s) to {written.name} "
-                  f"(backup saved as {written.name}.bak).")
-            print(">>> Now RELOAD the setup in the pits (re-enter the garage / "
-                  "re-select the setup) so AC picks up the changes, then drive "
-                  "the next stint.")
+            setup_path = str(written)          # work on the file AC will load
+            setup = load_setup(setup_path)     # reload new baseline
+            print(f"\nApplied {len(changes)} change(s) to {written.name}.")
+            print(f">>> In the pits, open Setup and LOAD the '{written.stem}' "
+                  "setup (no game restart needed), then drive the next stint.")
         else:
             print("Left the setup unchanged.")
             last_change = None

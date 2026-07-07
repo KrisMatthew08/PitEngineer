@@ -66,6 +66,20 @@ def _coerce_int(raw: str) -> int:
         return 0
 
 
+def writable_target(setup_path: str | Path) -> Path:
+    """Where to safely WRITE a setup so AC will actually load it.
+
+    AC owns `last.ini` (its auto-saved current setup) and won't reliably reload
+    it from disk mid-session - you'd have to restart the game. So if the driver
+    is on `last.ini`, we redirect writes to a named `pitengineer.ini` setup they
+    can load in the pits, which AC re-reads cleanly on selection.
+    """
+    p = Path(setup_path)
+    if p.stem.lower() in ("last", "last_saved"):
+        return p.with_name("pitengineer.ini")
+    return p
+
+
 def write_setup(
     setup: Setup,
     changes: dict[str, int],
