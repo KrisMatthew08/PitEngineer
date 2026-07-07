@@ -133,6 +133,8 @@ class PhysicsSnapshot:
     wheel_slip: tuple[float, float, float, float]
     wheel_load: tuple[float, float, float, float]
     suspension_travel: tuple[float, float, float, float]
+    camber_rad: tuple[float, float, float, float]      # dynamic camber (radians)
+    accel_g: tuple[float, float, float]                # lateral/vert/long G
 
 
 @dataclass
@@ -153,6 +155,7 @@ class StaticSnapshot:
     car_model: str
     track: str
     max_rpm: int
+    suspension_max_travel: tuple[float, float, float, float]  # per wheel, metres
 
 
 def _quad(arr) -> tuple[float, float, float, float]:
@@ -255,6 +258,8 @@ class ACTelemetry:
             wheel_slip=_quad(raw.wheelSlip),
             wheel_load=_quad(raw.wheelLoad),
             suspension_travel=_quad(raw.suspensionTravel),
+            camber_rad=_quad(raw.camberRAD),
+            accel_g=(float(raw.accG[0]), float(raw.accG[1]), float(raw.accG[2])),
         )
 
     def read_graphics(self) -> GraphicsSnapshot:
@@ -277,6 +282,7 @@ class ACTelemetry:
             car_model=raw.carModel,
             track=raw.track,
             max_rpm=raw.maxRpm,
+            suspension_max_travel=_quad(raw.suspensionMaxTravel),
         )
 
 

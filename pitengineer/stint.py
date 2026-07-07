@@ -18,6 +18,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+from .analysis import (BrakeDiffReport, CamberReport, KerbReport, TrackCharacter,
+                       analyze_brakes_diff, analyze_camber, analyze_kerbs, analyze_track)
 from .driver_profile import DriverProfile, compute_profile
 from .gearing import GearingReport, analyze_gearing
 from .shared_memory import ACTelemetry, PhysicsSnapshot
@@ -29,6 +31,7 @@ class StintData:
     samples: list[PhysicsSnapshot] = field(default_factory=list)
     lap_times_ms: list[int] = field(default_factory=list)  # completed laps this stint
     car_max_rpm: int = 0  # redline, read from the static block at stint start
+    susp_max_travel: tuple[float, float, float, float] | None = None  # from static
     # Parallel per-sample track data (same length/order as `samples`), for
     # locating where on the lap time is lost.
     positions: list[float] = field(default_factory=list)  # 0..1 lap fraction
@@ -64,6 +67,10 @@ class StintReport:
     summary: TelemetrySummary
     profile: DriverProfile
     gearing: "GearingReport"
+    camber: CamberReport
+    kerbs: KerbReport
+    brakes: BrakeDiffReport
+    track: TrackCharacter
 
     def describe(self) -> str:
         m = self.metrics
@@ -78,6 +85,14 @@ class StintReport:
             lines.append("No completed laps captured this stint.")
         lines.append(self.summary.describe())
         lines.append(self.gearing.describe())
+        lines.append(self.track.describe())
+        # Only surface advanced analysis when it found something actionable.
+        if self.camber.has_issue:
+            lines.append(self.camber.describe())
+        if self.kerbs.has_issue:
+            lines.append(self.kerbs.describe())
+        if self.brakes.has_issue:
+            lines.append(self.brakes.describe())
         lines.append(self.profile.describe())
         note = self.consistency_note()
         if note:
@@ -162,7 +177,9 @@ class StintRecorder:
         period = 1.0 / self._rate
         try:
             with ACTelemetry() as tele:
-                self.data.car_max_rpm = tele.read_static().max_rpm
+                stat = tele.read_static()
+                self.data.car_max_rpm = stat.max_rpm
+                self.data.susp_max_travel = stat.suspension_max_travel
                 last_completed = tele.read_graphics().completed_laps
                 while not self._stop.is_set():
                     g = tele.read_graphics()
@@ -186,4 +203,8 @@ def analyze(data: StintData) -> StintReport:
         summary=summarize(data.samples),
         profile=compute_profile(data.samples, data.lap_times_ms),
         gearing=analyze_gearing(data.samples, data.car_max_rpm),
+        camber=analyze_camber(data.samples),
+        kerbs=analyze_kerbs(data.samples, data.susp_max_travel),
+        brakes=analyze_brakes_diff(data.samples),
+        track=analyze_track(data.samples),
     )
