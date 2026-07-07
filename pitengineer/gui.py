@@ -226,11 +226,17 @@ class AutoTuneApp:
             self._log(prog)
 
         if not diag.changes:
+            from .translator import _clear_problem
             self._log(f"\n>>> {diag.text}")
-            self._log(">>> The car looks dialled in for your driving.")
+            if _clear_problem(report, self.manifest) is None:
+                self._log(">>> The car looks dialled in for your driving.")
+                self._set_status("Dialled in. Drive more stints to keep refining if you like.")
+            else:
+                self._log(">>> Couldn't auto-fix this one on this car - adjust it "
+                          "manually, or run with the Claude engine for sharper reasoning.")
+                self._set_status("No safe auto-fix for this one - see the note above.")
             self.pending = None
             self.stint_btn.configure(state="normal")
-            self._set_status("Dialled in. Drive more stints to keep refining if you like.")
             return
 
         self._log("\nProposed changes (most impactful first):")

@@ -193,18 +193,29 @@ def diagnose_autotune(
         "spend a change on balance (ARB/diff/camber) when the handling is "
         "genuinely costing time or confidence.\n"
         "Follow the vehicle-dynamics grounding directions - they are correct "
-        "(e.g. to cure understeer, SOFTEN the front anti-roll bar). Propose only a "
-        "few high-impact changes in small steps; only use adjustable parameters "
-        "and keep every proposed_index in range. If the last change did not help, "
-        "reconsider or revert it. If the car is fast and balanced and lap times "
-        "have plateaued, return an EMPTY changes list and state it is dialled in. "
+        "(e.g. to cure understeer, SOFTEN the front anti-roll bar). Propose the "
+        "2-4 MOST impactful changes this stint (address more than one thing when "
+        "it clearly helps - e.g. speed AND a tyre-temp fix), each a small step. "
+        "ONLY use parameters that appear in the adjustable list below - this car "
+        "may not have gears, wings, or ARBs; never propose a parameter that isn't "
+        "listed. Keep every proposed_index in range. If the last change did not "
+        "help, reconsider or revert it. If the car is fast and balanced and lap "
+        "times have plateaued, return an EMPTY changes list and state it is "
+        "dialled in. "
+        "INDEX CONVENTIONS (get the direction right): camber is stored as a "
+        "NEGATIVE number - a LOWER (more negative) index means MORE camber and "
+        "more grip, so to add front grip you DECREASE the camber index. "
+        "Anti-roll bars and springs: lower index = softer. Tyre pressure: lower "
+        "index = lower pressure. Make sure each proposed_index actually moves in "
+        "the direction your reasoning intends. "
         "Tailor everything to the driver's style. Respond only with the structured "
         "JSON (diagnosis + changes)."
     )
 
     # If code detected a clear gearing problem, force it to the top so the model
-    # can't overlook it in favour of the vivid balance signal.
-    priority = report.gearing.priority_note()
+    # can't overlook it - but only steer toward gears the car actually has.
+    can_adjust_gears = _has_gear_params(manifest)
+    priority = report.gearing.priority_note(can_adjust_gears)
     priority_block = f"{priority}\n\n" if priority else ""
 
     user = (
@@ -229,7 +240,7 @@ def diagnose_autotune(
     # forcefully, then fall back to a rule-based fix so the driver always gets
     # something actionable when the car obviously isn't right.
     if not diag.changes:
-        problem = _clear_problem(report)
+        problem = _clear_problem(report, manifest)
         if problem:
             forced = user + (
                 f"\n\nYou returned NO changes, but the car is NOT dialled in: "
@@ -243,8 +254,28 @@ def diagnose_autotune(
     return diag
 
 
-def _clear_problem(report) -> str | None:
-    """A short description of an obvious, unresolved problem - or None if fine."""
+_GEAR_HINTS = ("GEAR", "FINAL", "RATIO")
+
+
+def _has_gear_params(manifest: CarManifest) -> bool:
+    """True if the car exposes any gear-ratio adjustment (read from its setup).
+    Some cars (e.g. road cars) simply cannot change gearing."""
+    return any(
+        any(h in name.upper() for h in _GEAR_HINTS)
+        for name in manifest.parameters
+    )
+
+
+def _has_wing(manifest: CarManifest) -> bool:
+    return any(name.upper().startswith("WING") for name in manifest.parameters)
+
+
+def _clear_problem(report, manifest: CarManifest | None = None) -> str | None:
+    """A short description of an obvious, unresolved problem - or None if fine.
+
+    A gearing issue only counts as actionable if the car can adjust gears, or
+    has a wing to trade for straight-line speed.
+    """
     s = report.summary
     if s.tendency in ("understeer", "oversteer") and s.tendency_strength in (
             "moderate", "strong"):
@@ -254,27 +285,34 @@ def _clear_problem(report) -> str | None:
         end = "rear" if delta < 0 else "front"
         return f"{end} tyres overheating ({abs(delta):.0f}C imbalance)"
     if getattr(report, "gearing", None) and report.gearing.issue:
-        return report.gearing.issue.replace("_", " ")
+        if manifest is None or _has_gear_params(manifest) or _has_wing(manifest):
+            return report.gearing.issue.replace("_", " ")
     return None
 
 
 def _fallback_change(report, setup: Setup, manifest: CarManifest,
                      problem: str) -> Diagnosis:
-    """A guaranteed, conservative rule-based change for a clear problem.
+    """A guaranteed conservative change when the model won't act.
 
-    Used only when the model twice refuses to propose anything. Moves one
-    sensible lever a single step in the correct direction.
+    Only uses levers the car actually has, and pivots when the obvious lever
+    isn't available (gears it can't change -> trim wing for speed).
     """
     s = report.summary
     candidates: list[tuple[str, str]] = []
+
+    # Gearing issue but no gear params -> trim wing for straight-line speed.
+    if report.gearing.issue and not _has_gear_params(manifest):
+        candidates += [(w, "dec") for w in
+                       ("WING_2", "WING_1", "WING_REAR", "WING_9", "WING_3", "WING_10")]
     if s.tendency == "oversteer":
-        candidates += [("ARB_REAR", "dec"), ("ARB_R", "dec")]
+        candidates += [("ARB_REAR", "dec"), ("ARB_R", "dec"),
+                       ("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"), ("PRESSURE_LR", "dec")]
     elif s.tendency == "understeer":
-        candidates += [("ARB_FRONT", "dec"), ("ARB_F", "dec")]
-    if s.rear_temp - s.front_temp > 20:
-        candidates += [("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"),
-                       ("PRESSURE_LR", "dec")]
-    elif s.front_temp - s.rear_temp > 20:
+        candidates += [("ARB_FRONT", "dec"), ("ARB_F", "dec"),
+                       ("PRESSURE_LF", "dec"), ("PRESSURE_RF", "dec")]
+    if s.rear_temp - s.front_temp > 15:
+        candidates += [("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"), ("PRESSURE_LR", "dec")]
+    elif s.front_temp - s.rear_temp > 15:
         candidates += [("PRESSURE_LF", "dec"), ("PRESSURE_RF", "dec")]
 
     for sec, dirn in candidates:
@@ -283,22 +321,24 @@ def _fallback_change(report, setup: Setup, manifest: CarManifest,
         if p is None or cur is None:
             continue
         new = p.clamp(cur - p.step) if dirn == "dec" else p.clamp(cur + p.step)
-        if new != cur:
-            word = "softer" if "ARB" in sec else "lower"
-            return Diagnosis(
-                text=f"The car has {problem} and the model didn't act, so here's "
-                     "a conservative first step.",
-                changes=[Change(
-                    section=sec, label=p.label, current_index=cur,
-                    proposed_index=new,
-                    reason=f"Conservative fix for {problem}: nudge {p.label} "
-                           f"{word} by one step.",
-                    confidence="low", clamped=False,
-                )],
-            )
+        if new == cur:
+            continue
+        if sec.upper().startswith("WING"):
+            why = "less wing = less drag = more top speed (this car can't change gears)"
+        elif "ARB" in sec:
+            why = f"softer to reduce {s.tendency}"
+        else:
+            why = "lower to bring that end's tyre temps down"
+        return Diagnosis(
+            text=f"The car shows {problem}; here's a conservative step it supports.",
+            changes=[Change(
+                section=sec, label=p.label, current_index=cur, proposed_index=new,
+                reason=f"{p.label}: {why}.", confidence="low", clamped=False,
+            )],
+        )
     return Diagnosis(
-        text=f"The car shows {problem}, but no safe automatic lever was found - "
-             "adjust it manually or try the Claude engine.",
+        text=f"The car shows {problem}, but this car has no adjustable lever that "
+             "safely addresses it - it may not be fixable via setup here.",
         changes=[],
     )
 

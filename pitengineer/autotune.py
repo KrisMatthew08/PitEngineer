@@ -110,8 +110,13 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
             continue
 
         if not diag.changes:
+            from .translator import _clear_problem
             print(f"\n>>> {diag.text}")
-            print(">>> The car looks dialled in for your driving. Nice.")
+            if _clear_problem(report, manifest) is None:
+                print(">>> The car looks dialled in for your driving. Nice.")
+            else:
+                print(">>> Couldn't auto-fix this one on this car - adjust it "
+                      "manually, or try --engine claude for sharper reasoning.")
             cont = _prompt("Keep tuning anyway? [y/N] ").lower()
             if cont not in ("y", "yes"):
                 print("\nDone. Setup and history saved.")

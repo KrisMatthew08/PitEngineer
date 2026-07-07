@@ -34,8 +34,23 @@ class GearingReport:
     issue: str = ""               # "gears_too_short" | "gears_too_tall" | ""
     notes: list[str] = field(default_factory=list)
 
-    def priority_note(self) -> str:
-        """A hard-priority instruction when there's a clear, costly gearing issue."""
+    def priority_note(self, can_adjust_gears: bool = True) -> str:
+        """A hard-priority instruction when there's a clear, costly gearing issue.
+
+        If the car can't change gear ratios, pivot to aero (less wing = less
+        drag = higher top speed / reaches redline) instead of chasing a lever
+        that doesn't exist.
+        """
+        if not self.issue:
+            return ""
+        if not can_adjust_gears:
+            return (
+                "PRIORITY THIS STINT: the gearing is not ideal, but THIS car "
+                "cannot change gear ratios. To gain straight-line speed instead, "
+                "reduce WING/drag (if the car has a wing). Do NOT propose gear "
+                "changes - they aren't adjustable. Then improve whatever else "
+                "helps lap time (tyre pressures, balance)."
+            )
         if self.issue == "gears_too_short":
             return (
                 "PRIORITY THIS STINT: the car is bouncing off the rev limiter in "
@@ -43,14 +58,11 @@ class GearingReport:
                 "first (taller final drive / longer top gears) before touching "
                 "balance."
             )
-        if self.issue == "gears_too_tall":
-            return (
-                "PRIORITY THIS STINT: the car never reaches redline in top gear - "
-                "the gears are too tall and you're leaving acceleration on the "
-                "table. Fix the GEARING first (shorter ratios) before touching "
-                "balance."
-            )
-        return ""
+        return (
+            "PRIORITY THIS STINT: the car never reaches redline in top gear - "
+            "the gears are too tall and you're leaving acceleration on the table. "
+            "Fix the GEARING first (shorter ratios) before touching balance."
+        )
 
     def describe(self) -> str:
         pct = (self.top_gear_peak_rpm / self.car_max_rpm * 100) if self.car_max_rpm else 0
