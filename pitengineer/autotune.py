@@ -89,10 +89,19 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
         verdict = memory.compare(prev, record)
         memory.append(record)
 
+        # Where on the lap is time lost? Compare to the best-ever ghost lap.
+        from . import segments
+        ghost = memory.load_ghost(car, track)
+        seg = segments.analyze(rec.data, reference=ghost)
+        if seg.lap_time_s > 0 and (ghost is None or seg.lap_time_s < ghost.get("lap_time_s", 1e9)):
+            memory.save_ghost(car, track, segments.to_reference(seg))
+
         print("\n" + "-" * 62)
         print(f"STINT {stint_no} DEBRIEF")
         print("-" * 62)
         print(report.describe())
+        if seg.segments:
+            print("\n" + seg.describe())
         if last_change:
             print("\n" + verdict.text)
         prog = memory.progress(car, track)
@@ -103,7 +112,8 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
         try:
             from .translator import diagnose_autotune
             diag = diagnose_autotune(report, verdict if last_change else None,
-                                     setup, manifest, engine, last_change)
+                                     setup, manifest, engine, last_change,
+                                     segment_context=seg.worst_summary())
         except Exception as exc:  # noqa: BLE001
             print(f"Diagnosis failed: {exc}", file=sys.stderr)
             last_change = None

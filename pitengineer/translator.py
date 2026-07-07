@@ -141,6 +141,7 @@ def diagnose_autotune(
     manifest: CarManifest,
     engine: Engine | None = None,
     last_change: dict[str, tuple[int, int]] | None = None,
+    segment_context: str = "",
 ) -> Diagnosis:
     """The auto-tune brain: one iteration of the loop.
 
@@ -182,8 +183,13 @@ def diagnose_autotune(
         "You are an expert Assetto Corsa race engineer running an iterative "
         "auto-tune session for one driver. Each stint you get: the car's measured "
         "behaviour, the driver's style, and whether your LAST change helped. Your "
-        "job is to move the setup toward being FASTER (lower lap time) and more "
-        "balanced FOR THIS DRIVER, one careful step at a time.\n"
+        "job is to move the setup toward CONSISTENT race pace FOR THIS DRIVER - "
+        "repeatable lap after lap - not just one hero lap. Prefer a setup whose "
+        "tyres stay in their temperature window over a whole stint and that is "
+        "predictable and easy to drive; a peaky setup that is quick for a lap "
+        "then overheats the tyres or snaps is WORSE for a race even if one lap is "
+        "fast. Improve the typical (median) lap and tighten the spread, not only "
+        "the best lap. Work one careful step at a time.\n"
         "Prioritise the change that gains the most LAP TIME, not just comfort. "
         "Weigh ALL levers: GEARING (bouncing off the rev limiter = gears too "
         "short; never reaching redline in top gear = too tall) and AERO/WINGS "
@@ -217,10 +223,18 @@ def diagnose_autotune(
     can_adjust_gears = _has_gear_params(manifest)
     priority = report.gearing.priority_note(can_adjust_gears)
     priority_block = f"{priority}\n\n" if priority else ""
+    segment_block = (
+        f"WHERE YOU LOSE TIME ON THE LAP:\n{segment_context}\n"
+        "Prioritise a setup change that helps the biggest time-loss spot above "
+        "(e.g. understeer in a slow corner -> more front grip; slow onto a "
+        "straight -> traction/gearing/less drag).\n\n"
+        if segment_context else ""
+    )
 
     user = (
         f"Car: {manifest.display_name}\n\n"
         f"{priority_block}"
+        f"{segment_block}"
         f"{last_change_text}\n\n"
         f"Result of the last change: {verdict_text}\n\n"
         f"This stint's telemetry:\n{report.describe()}\n\n"

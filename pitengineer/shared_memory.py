@@ -87,6 +87,8 @@ class _Graphics(ctypes.Structure):
         ("lastSectorTime", c_int),
         ("numberOfLaps", c_int),
         ("tyreCompound", c_wchar * 33),
+        ("replayTimeMultiplier", c_float),
+        ("normalizedCarPosition", c_float),  # 0..1 lap fraction - where on track
     ]
 
 
@@ -143,6 +145,7 @@ class GraphicsSnapshot:
     is_in_pit: bool
     current_sector: int
     tyre_compound: str
+    car_position: float  # normalized 0..1 lap fraction (where on the track)
 
 
 @dataclass
@@ -265,6 +268,7 @@ class ACTelemetry:
             is_in_pit=bool(raw.isInPit),
             current_sector=raw.currentSectorIndex,
             tyre_compound=raw.tyreCompound,
+            car_position=raw.normalizedCarPosition,
         )
 
     def read_static(self) -> StaticSnapshot:

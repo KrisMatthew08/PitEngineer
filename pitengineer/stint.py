@@ -29,6 +29,11 @@ class StintData:
     samples: list[PhysicsSnapshot] = field(default_factory=list)
     lap_times_ms: list[int] = field(default_factory=list)  # completed laps this stint
     car_max_rpm: int = 0  # redline, read from the static block at stint start
+    # Parallel per-sample track data (same length/order as `samples`), for
+    # locating where on the lap time is lost.
+    positions: list[float] = field(default_factory=list)  # 0..1 lap fraction
+    times: list[float] = field(default_factory=list)      # monotonic seconds
+    laps: list[int] = field(default_factory=list)          # completed-lap index at sample
 
 
 @dataclass
@@ -160,8 +165,11 @@ class StintRecorder:
                 self.data.car_max_rpm = tele.read_static().max_rpm
                 last_completed = tele.read_graphics().completed_laps
                 while not self._stop.is_set():
-                    self.data.samples.append(tele.read_physics())
                     g = tele.read_graphics()
+                    self.data.samples.append(tele.read_physics())
+                    self.data.positions.append(g.car_position)
+                    self.data.times.append(time.monotonic())
+                    self.data.laps.append(g.completed_laps)
                     if g.completed_laps > last_completed and g.last_time_ms > 0:
                         # A lap just finished; last_time_ms is its time.
                         self.data.lap_times_ms.append(g.last_time_ms)

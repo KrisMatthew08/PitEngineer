@@ -32,6 +32,8 @@ class StintRecord:
     balance_tendency: str
     balance_magnitude: float          # front/rear slip imbalance proxy
     front_rear_temp_delta: float
+    lap_spread_ms: int | None = None  # consistency: max-min of clean laps
+    consistency: float = 0.5          # 0 erratic .. 1 metronomic
     changes: dict[str, list[int]] = field(default_factory=dict)  # section -> [old, new]
 
     @staticmethod
@@ -49,6 +51,8 @@ class StintRecord:
             balance_tendency=s.tendency,
             balance_magnitude=round(mag, 4),
             front_rear_temp_delta=round(s.front_temp - s.rear_temp, 1),
+            lap_spread_ms=report.metrics.lap_spread_ms,
+            consistency=round(report.profile.consistency, 3),
             changes={k: [v[0], v[1]] for k, v in (changes or {}).items()},
         )
 
@@ -88,6 +92,31 @@ class SessionMemory:
         records = self.load(car, track)
         return records[-1] if records else None
 
+    # --- Reference "ghost" lap (best-ever per car/track) + target time ---
+    def _ghost_path(self, car: str, track: str):
+        safe = f"{car}__{track}".replace("/", "_").replace("\\", "_")
+        return self.dir / f"{safe}.ghost.json"
+
+    def load_ghost(self, car: str, track: str) -> dict | None:
+        p = self._ghost_path(car, track)
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return None
+
+    def save_ghost(self, car: str, track: str, reference: dict) -> None:
+        self._ghost_path(car, track).write_text(
+            json.dumps(reference, indent=2), encoding="utf-8")
+
+    def target_ms(self, car: str, track: str) -> int | None:
+        """Best-ever lap for this car/track, in ms (the time to aim for)."""
+        g = self.load_ghost(car, track)
+        if g and g.get("lap_time_s"):
+            return int(g["lap_time_s"] * 1000)
+        return None
+
     def progress(self, car: str, track: str) -> str:
         """A one-line 'are we getting faster?' summary across the session.
 
@@ -99,19 +128,20 @@ class SessionMemory:
             return ""
         n = len(records)
         session_best = min(bests)
-        opening = bests[0]
-        delta = session_best - opening
-        if n < 2:
-            return f"Session baseline: best {fmt_time(session_best)}."
-        if delta < -20:  # >0.02s faster than the opening stint
-            return (
-                f"Session progress: {n} stints, best {fmt_time(session_best)} "
-                f"({delta/1000:+.2f}s vs your opening stint - getting faster)."
-            )
-        return (
-            f"Session progress: {n} stints, best {fmt_time(session_best)} "
-            f"(no lap-time gain yet vs your opening stint)."
-        )
+        delta = session_best - bests[0]
+        # Consistency dimension: best typical (median) pace + most consistent stint.
+        medians = [r.median_lap_ms for r in records if r.median_lap_ms]
+        best_median = min(medians) if medians else None
+        best_consistency = max((r.consistency for r in records), default=0.0)
+        cons = f"{best_consistency:.2f}" if best_consistency else "-"
+
+        line = f"Session: {n} stint(s) | best lap {fmt_time(session_best)}"
+        if n >= 2:
+            line += f" ({delta/1000:+.2f}s vs opening)"
+        if best_median:
+            line += f" | typical race pace {fmt_time(best_median)}"
+        line += f" | best consistency {cons}"
+        return line
 
     def compare(self, prev: StintRecord | None, cur: StintRecord) -> Verdict:
         """Did the change between prev and cur help? Blend lap time + balance."""
@@ -135,22 +165,38 @@ class SessionMemory:
 
         bal_improved = cur.balance_magnitude < prev.balance_magnitude - 0.02
 
-        # Blend the two signals.
-        if lap_improved is True or (lap_improved is None and bal_improved):
+        # Consistency signals: a better median (typical race pace) and a tighter
+        # spread (more repeatable) matter as much as the single best lap - a
+        # race is won on consistent laps, not one hero lap.
+        median_delta = None
+        median_improved = None
+        if prev.median_lap_ms and cur.median_lap_ms:
+            median_delta = cur.median_lap_ms - prev.median_lap_ms
+            noise = 150 if laps >= 5 else 300
+            if median_delta < -noise:
+                median_improved = True
+            elif median_delta > noise:
+                median_improved = False
+        consistency_improved = cur.consistency > prev.consistency + 0.08
+
+        # Blend all signals. Median pace + consistency count alongside best lap.
+        positives = sum(1 for x in (lap_improved, median_improved) if x is True) \
+            + (1 if bal_improved else 0) + (1 if consistency_improved else 0)
+        negatives = sum(1 for x in (lap_improved, median_improved) if x is False)
+        if positives > negatives and positives > 0:
             improved = True
-        elif lap_improved is False and not bal_improved:
+        elif negatives > positives:
             improved = False
         else:
             improved = None
 
         parts = []
         if lap_delta is not None:
-            sign = "-" if lap_delta < 0 else "+"
-            parts.append(f"best lap {sign}{abs(lap_delta)/1000:.2f}s")
-        parts.append(
-            f"balance {'better' if bal_improved else 'similar/worse'} "
-            f"({prev.balance_magnitude:.2f}->{cur.balance_magnitude:.2f})"
-        )
+            parts.append(f"best {'-' if lap_delta < 0 else '+'}{abs(lap_delta)/1000:.2f}s")
+        if median_delta is not None:
+            parts.append(f"median {'-' if median_delta < 0 else '+'}{abs(median_delta)/1000:.2f}s")
+        parts.append(f"consistency {prev.consistency:.2f}->{cur.consistency:.2f}")
+        parts.append(f"balance {'better' if bal_improved else 'similar'}")
         verdict_word = (
             "The last change HELPED" if improved
             else "The last change did NOT help" if improved is False

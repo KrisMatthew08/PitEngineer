@@ -201,10 +201,17 @@ class AutoTuneApp:
             prev = self.memory.last(self.car, self.track)
             verdict = self.memory.compare(prev, record)
             self.memory.append(record)
+
+            from . import segments
+            ghost = self.memory.load_ghost(self.car, self.track)
+            seg = segments.analyze(data, reference=ghost)
+            if seg.lap_time_s > 0 and (ghost is None or seg.lap_time_s < ghost.get("lap_time_s", 1e9)):
+                self.memory.save_ghost(self.car, self.track, segments.to_reference(seg))
+
             diag = diagnose_autotune(report, verdict if self.last_change else None,
                                      self.setup, self.manifest, self.engine,
-                                     self.last_change)
-            self.root.after(0, self._on_diagnosis, report, verdict, diag)
+                                     self.last_change, segment_context=seg.worst_summary())
+            self.root.after(0, self._on_diagnosis, report, verdict, seg, diag)
         except Exception as exc:  # noqa: BLE001
             self.root.after(0, self._on_error, exc)
 
@@ -214,11 +221,13 @@ class AutoTuneApp:
         messagebox.showerror("Diagnosis failed", str(exc))
         self._set_status("Error - try another stint.")
 
-    def _on_diagnosis(self, report, verdict, diag) -> None:
+    def _on_diagnosis(self, report, verdict, seg, diag) -> None:
         self._set_busy(False)
         self.stint_no += 1
         self._log(f"STINT {self.stint_no} DEBRIEF", header=True)
         self._log(report.describe())
+        if seg is not None and seg.segments:
+            self._log("\n" + seg.describe())
         if self.last_change:
             self._log("\n" + verdict.text)
         prog = self.memory.progress(self.car, self.track)
