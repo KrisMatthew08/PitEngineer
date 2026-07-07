@@ -57,7 +57,7 @@ def _capture_stint() -> "StintRecorder | None":
 
 
 def run(setup_path: str, manifest: CarManifest, engine: Engine,
-        car: str, track: str) -> int:
+        car: str, track: str, full_pass: bool = False) -> int:
     setup = load_setup(setup_path)
     memory = SessionMemory()
 
@@ -113,7 +113,8 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
             from .translator import diagnose_autotune
             diag = diagnose_autotune(report, verdict if last_change else None,
                                      setup, manifest, engine, last_change,
-                                     segment_context=seg.worst_summary())
+                                     segment_context=seg.worst_summary(),
+                                     full_pass=full_pass)
         except Exception as exc:  # noqa: BLE001
             print(f"Diagnosis failed: {exc}", file=sys.stderr)
             last_change = None
@@ -173,6 +174,9 @@ def main() -> int:
     parser.add_argument("--track", default=None, help="Track id (auto-detected from AC if omitted)")
     parser.add_argument("--engine", default="ollama", choices=["ollama", "claude"])
     parser.add_argument("--model", default=None, help="Model override")
+    parser.add_argument("--full", action="store_true",
+                        help="Full setup pass: propose a complete setup at once "
+                             "(vs the default iterative one-change-per-stint)")
     args = parser.parse_args()
     _load_dotenv()
 
@@ -206,7 +210,7 @@ def main() -> int:
         return 1
 
     engine = make_engine(args.engine, args.model)
-    return run(str(setup_path), manifest, engine, car, track)
+    return run(str(setup_path), manifest, engine, car, track, full_pass=args.full)
 
 
 if __name__ == "__main__":

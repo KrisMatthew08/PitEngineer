@@ -168,6 +168,13 @@ class AutoTuneApp:
         self.stint_btn = self._btn(bottom, "● Start stint", self._toggle_stint)
         self.stint_btn.configure(state="disabled")
         self.stint_btn.pack(side="left")
+        self.full_var = tk.BooleanVar(value=False)
+        self.full_chk = tk.Checkbutton(
+            bottom, text="Full setup pass (change everything)", variable=self.full_var,
+            font=self.f_sub, bg=BG, fg=MUTED, selectcolor=PANEL2,
+            activebackground=BG, activeforeground=FG, bd=0, highlightthickness=0,
+            cursor="hand2")
+        self.full_chk.pack(side="left", padx=12)
         self.busy = tk.Label(bottom, text="", font=self.f_sub, bg=BG, fg=ACCENT)
         self.busy.pack(side="right")
 
@@ -280,7 +287,8 @@ class AutoTuneApp:
                 self.memory.save_ghost(self.car, self.track, segments.to_reference(seg))
             diag = diagnose_autotune(report, verdict if self.last_change else None,
                                      self.setup, self.manifest, self.engine,
-                                     self.last_change, segment_context=seg.worst_summary())
+                                     self.last_change, segment_context=seg.worst_summary(),
+                                     full_pass=self.full_var.get())
             self.root.after(0, self._show, report, verdict, seg, diag)
         except Exception as exc:  # noqa: BLE001
             self.root.after(0, self._error, exc)

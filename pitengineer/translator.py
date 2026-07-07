@@ -142,6 +142,7 @@ def diagnose_autotune(
     engine: Engine | None = None,
     last_change: dict[str, tuple[int, int]] | None = None,
     segment_context: str = "",
+    full_pass: bool = False,
 ) -> Diagnosis:
     """The auto-tune brain: one iteration of the loop.
 
@@ -154,6 +155,11 @@ def diagnose_autotune(
     whether the last change worked, and proposes the next change(s) - or none if
     the car is dialled in.
     """
+    if full_pass:
+        # A complete setup at once, built deterministically from the analyzers
+        # (reliable + correct direction, not dependent on the small model).
+        return _rule_based_full_pass(report, setup, manifest)
+
     engine = engine or make_engine("ollama")
 
     # Always include gearing/aero levers alongside the balance-specific ones -
@@ -179,44 +185,49 @@ def diagnose_autotune(
     else:
         last_change_text = "No change was made before this stint (this is a baseline read)."
 
-    system = (
-        "You are an expert Assetto Corsa race engineer running an iterative "
-        "auto-tune session for one driver. Each stint you get: the car's measured "
-        "behaviour, the driver's style, and whether your LAST change helped. Your "
-        "job is to move the setup toward CONSISTENT race pace FOR THIS DRIVER - "
-        "repeatable lap after lap - not just one hero lap. Prefer a setup whose "
-        "tyres stay in their temperature window over a whole stint and that is "
-        "predictable and easy to drive; a peaky setup that is quick for a lap "
-        "then overheats the tyres or snaps is WORSE for a race even if one lap is "
-        "fast. Improve the typical (median) lap and tighten the spread, not only "
-        "the best lap. Work one careful step at a time.\n"
-        "Prioritise the change that gains the most LAP TIME, not just comfort. "
-        "Weigh ALL levers: GEARING (bouncing off the rev limiter = gears too "
-        "short; never reaching redline in top gear = too tall) and AERO/WINGS "
-        "(less wing = more top speed but less cornering grip) are often bigger "
-        "lap-time gains than an anti-roll bar tweak, especially on power tracks "
-        "and aero cars - use the gearing/aero read in the telemetry above. Only "
-        "spend a change on balance (ARB/diff/camber) when the handling is "
-        "genuinely costing time or confidence.\n"
-        "Follow the vehicle-dynamics grounding directions - they are correct "
-        "(e.g. to cure understeer, SOFTEN the front anti-roll bar). Propose the "
-        "2-4 MOST impactful changes this stint (address more than one thing when "
-        "it clearly helps - e.g. speed AND a tyre-temp fix), each a small step. "
-        "ONLY use parameters that appear in the adjustable list below - this car "
-        "may not have gears, wings, or ARBs; never propose a parameter that isn't "
-        "listed. Keep every proposed_index in range. If the last change did not "
-        "help, reconsider or revert it. If the car is fast and balanced and lap "
-        "times have plateaued, return an EMPTY changes list and state it is "
-        "dialled in. "
+    _conventions = (
         "INDEX CONVENTIONS (get the direction right): camber is stored as a "
         "NEGATIVE number - a LOWER (more negative) index means MORE camber and "
         "more grip, so to add front grip you DECREASE the camber index. "
         "Anti-roll bars and springs: lower index = softer. Tyre pressure: lower "
         "index = lower pressure. Make sure each proposed_index actually moves in "
         "the direction your reasoning intends. "
-        "Tailor everything to the driver's style. Respond only with the structured "
-        "JSON (diagnosis + changes)."
+        "ONLY use parameters that appear in the adjustable list below - this car "
+        "may not have gears, wings, ARBs or dampers; never propose a parameter "
+        "that isn't listed. Keep every proposed_index in range. Tailor everything "
+        "to the driver's style and aim for CONSISTENT race pace (repeatable lap "
+        "after lap, tyres staying in their window) over a one-lap setup. "
+        "Follow the vehicle-dynamics grounding directions - they are correct "
+        "(e.g. cure understeer by SOFTENING the front anti-roll bar). "
+        "Respond only with the structured JSON (diagnosis + changes)."
     )
+    if full_pass:
+        system = (
+            "You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
+            "PASS for one driver, using all the measured telemetry (balance, "
+            "camber, tyre temps/pressures, gearing, aero, suspension/kerbs, "
+            "braking, differential, track character, and where time is lost on "
+            "the lap). Produce a full, well-rounded setup in ONE go: propose a "
+            "change for EVERY area the data shows needs improving - typically 6 "
+            "to 12 changes spread across multiple systems (e.g. camber AND "
+            "pressures AND gearing AND a damper/brake fix), each a sensible step. "
+            "Only leave an area alone if it is genuinely already good. Do not stop "
+            "at one or two changes - this is a comprehensive setup, not a single "
+            "tweak. " + _conventions
+        )
+    else:
+        system = (
+            "You are an expert Assetto Corsa race engineer running an iterative "
+            "auto-tune session for one driver. Each stint you get the car's "
+            "measured behaviour, the driver's style, and whether your LAST change "
+            "helped. Work ONE careful step at a time. Prioritise the change that "
+            "gains the most LAP TIME - weigh ALL levers: gearing (rev-limiter / "
+            "under-revving) and aero/wings are often bigger gains than an "
+            "anti-roll bar tweak. Propose the 2-4 MOST impactful changes this "
+            "stint. If the last change did not help, reconsider or revert it. If "
+            "the car is fast and balanced and lap times have plateaued, return an "
+            "EMPTY changes list and state it is dialled in. " + _conventions
+        )
 
     # If code detected a clear gearing problem, force it to the top so the model
     # can't overlook it - but only steer toward gears the car actually has.
@@ -242,8 +253,11 @@ def diagnose_autotune(
         f"Vehicle-dynamics grounding (symptom -> likely levers, follow these "
         f"directions):\n{grounding}\n\n"
         f"Current setup and legal ranges (index space):\n{setup_context}\n\n"
-        "Decide the next step: either propose the next change(s), or return an "
-        "empty changes list if it's dialled in."
+        + ("Do the COMPLETE setup pass now: propose a change for every area above "
+           "that needs improving (aim for 6-12 changes across multiple systems)."
+           if full_pass else
+           "Decide the next step: either propose the next change(s), or return an "
+           "empty changes list if it's dialled in.")
     )
 
     result = engine.propose(system, user, CHANGES_SCHEMA)
@@ -282,6 +296,105 @@ def _has_gear_params(manifest: CarManifest) -> bool:
 
 def _has_wing(manifest: CarManifest) -> bool:
     return any(name.upper().startswith("WING") for name in manifest.parameters)
+
+
+def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagnosis:
+    """Comprehensive setup pass built from the analyzers - a change for every
+    issue the telemetry flags, each in the correct direction, using only the
+    car's real parameters. Deterministic and model-independent.
+    """
+    changes: list[Change] = []
+    used: set[str] = set()
+
+    def add(section: str, direction: str, reason: str, steps: int = 1) -> None:
+        # direction: "dec"/"inc" (index). Camber "add" = more negative = dec.
+        if section in used:
+            return
+        p = manifest.get(section)
+        cur = setup.get(section)
+        if p is None or cur is None:
+            return
+        delta = p.step * steps
+        new = p.clamp(cur - delta) if direction == "dec" else p.clamp(cur + delta)
+        if new == cur:
+            return
+        changes.append(Change(section=section, label=p.label, current_index=cur,
+                              proposed_index=new, reason=reason,
+                              confidence="medium", clamped=False))
+        used.add(section)
+
+    s = report.summary
+    cam = report.camber
+
+    # 1) Camber (add camber = more negative = DECREASE the index)
+    if cam.front_advice == "add":
+        for w in ("CAMBER_LF", "CAMBER_RF"):
+            add(w, "dec", "add front camber - loaded tyre was rolling onto its edge")
+    elif cam.front_advice == "reduce":
+        for w in ("CAMBER_LF", "CAMBER_RF"):
+            add(w, "inc", "reduce front camber - too much under load")
+    if cam.rear_advice == "add":
+        for w in ("CAMBER_LR", "CAMBER_RR"):
+            add(w, "dec", "add rear camber for more rear grip under load")
+    elif cam.rear_advice == "reduce":
+        for w in ("CAMBER_LR", "CAMBER_RR"):
+            add(w, "inc", "reduce rear camber - too much under load")
+
+    # 2) Tyre temps -> pressures (hotter end: lower pressure a step)
+    if s.front_temp - s.rear_temp > 8:
+        for w in ("PRESSURE_LF", "PRESSURE_RF"):
+            add(w, "dec", "front tyres running hot - drop front pressure")
+    elif s.rear_temp - s.front_temp > 8:
+        for w in ("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"):
+            add(w, "dec", "rear tyres running hot - drop rear pressure")
+
+    # 3) Balance -> anti-roll bars (softer = lower index)
+    if s.tendency == "understeer" and s.tendency_strength in ("moderate", "strong"):
+        add("ARB_FRONT", "dec", "soften front bar to cut understeer")
+        add("ARB_F", "dec", "soften front bar to cut understeer")
+    elif s.tendency == "oversteer" and s.tendency_strength in ("moderate", "strong"):
+        add("ARB_REAR", "dec", "soften rear bar to cut oversteer")
+        add("ARB_R", "dec", "soften rear bar to cut oversteer")
+
+    # 4) Brakes & diff
+    b = report.brakes
+    if b.front_lock:
+        add("FRONT_BIAS", "dec", "fronts lock under braking - shift bias rearward")
+        add("BRAKE_BIAS", "dec", "fronts lock under braking - shift bias rearward")
+    if b.rear_lock:
+        add("FRONT_BIAS", "inc", "rears lock under braking - shift bias forward")
+        add("BRAKE_BIAS", "inc", "rears lock under braking - shift bias forward")
+        add("DIFF_COAST", "inc", "add coast lock to steady the rear on entry")
+    if b.wheelspin:
+        add("DIFF_POWER", "dec", "rear wheelspin on power - reduce power diff lock")
+
+    # 5) Kerbs / suspension
+    k = report.kerbs
+    if k.issue == "bottoming":
+        end = "R" if "rear" in k.worst_wheel else "F"
+        for w in (f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"):
+            add(w, "inc", "stiffen bump stops - car bottoms out over kerbs")
+        for w in (f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}"):
+            add(w, "inc", "raise ride height a touch to stop bottoming")
+    elif k.issue == "wheels_light":
+        end = "R" if "rear" in k.worst_wheel else "F"
+        for w in (f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"):
+            add(w, "dec", "soften bump damping so the wheel follows the kerb")
+
+    if not changes:
+        return Diagnosis(
+            text="Full setup pass: the telemetry doesn't flag a clear problem in "
+                 "any area right now - the car looks well sorted. Drive a harder "
+                 "or longer stint to surface more.",
+            changes=[],
+        )
+    areas = sorted({c.label.split()[0] for c in changes})
+    return Diagnosis(
+        text=f"Full setup pass: {len(changes)} changes across {report.track.kind} "
+             f"track character, touching {', '.join(areas[:6])}"
+             + ("…" if len(areas) > 6 else "") + ".",
+        changes=changes,
+    )
 
 
 def _clear_problem(report, manifest: CarManifest | None = None) -> str | None:
