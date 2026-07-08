@@ -30,9 +30,16 @@ _SKIP_SECTIONS = {
 }
 _SKIP_PREFIXES = ("CUSTOM_SCRIPT_ITEM", "__")
 
-# If a parameter shows only one value across all setups, widen it by this many
-# index steps each way so the AI has room to move (clamped at >= 0).
+# If a parameter shows only one value across all setups, widen it so the AI has
+# room to move. Camber/toe are stored as SIGNED real values (e.g. -29 = -2.9 deg)
+# with generous ranges, so give them more absolute room. And widen PROPORTIONALLY
+# to the value's magnitude, so large-valued params (anti-roll bars / springs
+# stored in N/m, e.g. 60000) get a meaningful window instead of a useless +/-4.
+# AC clamps any out-of-range value when it loads the setup, so a generous guess
+# is safe. (The authoritative ranges live in the car's data.acd - a future read.)
 _SOFT_WIDEN = 4
+_WIDEN_CAMBER = 8
+_WIDEN_FRAC = 0.12
 
 
 def default_setups_dir() -> Path:
@@ -134,17 +141,28 @@ def build_manifest_from_setups(
 
     params: dict[str, Parameter] = {}
     for section, values in observed.items():
+        group = _group_for(section)
         lo, hi = min(values), max(values)
         if lo == hi:
-            lo = max(0, lo - _SOFT_WIDEN)
-            hi = hi + _SOFT_WIDEN
+            # Only one value ever seen: open a window around it so the AI has
+            # room to move. Widen symmetrically. Camber/toe are stored as SIGNED
+            # real values (negative), so we must NOT floor at 0 for those - only
+            # index-style params (pressures, wing clicks) stay non-negative.
+            v = lo
+            base = _WIDEN_CAMBER if "CAMBER" in section.upper() else _SOFT_WIDEN
+            widen = max(base, round(abs(v) * _WIDEN_FRAC))
+            lo, hi = v - widen, v + widen
+            if v >= 0:
+                lo = max(0, lo)
+        if lo > hi:                       # never emit an inverted range
+            lo, hi = hi, lo
         params[section] = Parameter(
             name=section,
             label=_label_for(section),
             min=lo,
             max=hi,
             step=_step_from(values),
-            group=_group_for(section),
+            group=group,
         )
 
     return CarManifest(
@@ -177,6 +195,26 @@ def find_current_setup(
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def track_setup_target(
+    car_id: str,
+    track_id: str,
+    setups_dir: Path | None = None,
+    name: str = "pitengineer.ini",
+) -> Path | None:
+    """Where to SAVE the app's setup for the CURRENT track.
+
+    AC looks for a track's setups under ``setups/<car>/<track>/``. We want the
+    written setup to land in the live track's own folder (so AC loads it for
+    that track), NOT in ``generic/`` - even when the baseline we read came from
+    generic because the track folder had no setup yet. Returns None when we
+    don't know the track (caller should fall back to same-folder writing).
+    """
+    if not car_id or not car_id.strip() or not track_id or not track_id.strip():
+        return None
+    setups_dir = setups_dir or default_setups_dir()
+    return setups_dir / car_id / track_id / name
 
 
 def save_manifest(manifest: CarManifest, out_path: str | Path) -> Path:
