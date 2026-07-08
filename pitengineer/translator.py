@@ -199,6 +199,11 @@ def diagnose_autotune(
         "after lap, tyres staying in their window) over a one-lap setup. "
         "Follow the vehicle-dynamics grounding directions - they are correct "
         "(e.g. cure understeer by SOFTENING the front anti-roll bar). "
+        "TARGET WINDOWS: racing tyres like ~26-28 psi HOT and ~75-95C core; "
+        "read the corner PHASE from the telemetry - lock-ups mean an ENTRY/braking "
+        "problem (brake bias, front geometry), wheelspin means an EXIT/traction "
+        "problem (diff, rear grip), a hot overworked axle means a mid-corner "
+        "balance problem (anti-roll bars, camber). "
         "Respond only with the structured JSON (diagnosis + changes)."
     )
     if full_pass:
@@ -325,14 +330,17 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
 
     s = report.summary
     cam = report.camber
+    understeer = s.tendency == "understeer" and s.tendency_strength in ("moderate", "strong")
+    oversteer = s.tendency == "oversteer" and s.tendency_strength in ("moderate", "strong")
 
-    # 1) Camber (add camber = more negative = DECREASE the index)
+    # 1) Camber (add camber = more negative = DECREASE the index). Driven by the
+    #    dynamic-camber analysis, so we never fight an already-good camber.
     if cam.front_advice == "add":
         for w in ("CAMBER_LF", "CAMBER_RF"):
             add(w, "dec", "add front camber - loaded tyre was rolling onto its edge")
     elif cam.front_advice == "reduce":
         for w in ("CAMBER_LF", "CAMBER_RF"):
-            add(w, "inc", "reduce front camber - too much under load")
+            add(w, "inc", "reduce front camber - too much under load (riding the inner edge)")
     if cam.rear_advice == "add":
         for w in ("CAMBER_LR", "CAMBER_RR"):
             add(w, "dec", "add rear camber for more rear grip under load")
@@ -340,21 +348,30 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         for w in ("CAMBER_LR", "CAMBER_RR"):
             add(w, "inc", "reduce rear camber - too much under load")
 
-    # 2) Tyre temps -> pressures (hotter end: lower pressure a step)
-    if s.front_temp - s.rear_temp > 8:
+    # 2) Tyre pressures -> toward the racing window, from measured HOT psi.
+    #    Higher index = higher pressure. Only fires when clearly out of band.
+    pr = report.pressures
+    if pr.front_advice == "raise":
         for w in ("PRESSURE_LF", "PRESSURE_RF"):
-            add(w, "dec", "front tyres running hot - drop front pressure")
-    elif s.rear_temp - s.front_temp > 8:
+            add(w, "inc", f"front hot pressure low ({pr.front_psi:.1f} psi) - raise into the ~27 psi window")
+    elif pr.front_advice == "lower":
+        for w in ("PRESSURE_LF", "PRESSURE_RF"):
+            add(w, "dec", f"front hot pressure high ({pr.front_psi:.1f} psi) - lower into the ~27 psi window")
+    if pr.rear_advice == "raise":
         for w in ("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"):
-            add(w, "dec", "rear tyres running hot - drop rear pressure")
+            add(w, "inc", f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise into the window")
+    elif pr.rear_advice == "lower":
+        for w in ("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"):
+            add(w, "dec", f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower into the window")
 
-    # 3) Balance -> anti-roll bars (softer = lower index)
-    if s.tendency == "understeer" and s.tendency_strength in ("moderate", "strong"):
-        add("ARB_FRONT", "dec", "soften front bar to cut understeer")
-        add("ARB_F", "dec", "soften front bar to cut understeer")
-    elif s.tendency == "oversteer" and s.tendency_strength in ("moderate", "strong"):
-        add("ARB_REAR", "dec", "soften rear bar to cut oversteer")
-        add("ARB_R", "dec", "soften rear bar to cut oversteer")
+    # 3) Balance -> anti-roll bars (softer = lower index). One primary lever per
+    #    axle so we don't overshoot into the opposite problem.
+    if understeer:
+        add("ARB_FRONT", "dec", "soften front bar to cut understeer (more front grip in roll)")
+        add("ARB_F", "dec", "soften front bar to cut understeer (more front grip in roll)")
+    elif oversteer:
+        add("ARB_REAR", "dec", "soften rear bar to cut oversteer (more rear grip in roll)")
+        add("ARB_R", "dec", "soften rear bar to cut oversteer (more rear grip in roll)")
 
     # 4) Brakes & diff
     b = report.brakes
@@ -367,6 +384,7 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         add("DIFF_COAST", "inc", "add coast lock to steady the rear on entry")
     if b.wheelspin:
         add("DIFF_POWER", "dec", "rear wheelspin on power - reduce power diff lock")
+        add("DIFF_PRELOAD", "dec", "reduce diff preload to smooth power delivery on exit")
 
     # 5) Kerbs / suspension
     k = report.kerbs
@@ -374,12 +392,23 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         end = "R" if "rear" in k.worst_wheel else "F"
         for w in (f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"):
             add(w, "inc", "stiffen bump stops - car bottoms out over kerbs")
-        for w in (f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}"):
+        # Ride height: covers both the per-corner rod-length convention (Kunos)
+        # and the single front/rear height convention (many mods).
+        for w in (f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}", f"HEIGHT_{end}"):
             add(w, "inc", "raise ride height a touch to stop bottoming")
     elif k.issue == "wheels_light":
         end = "R" if "rear" in k.worst_wheel else "F"
         for w in (f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"):
             add(w, "dec", "soften bump damping so the wheel follows the kerb")
+
+    # 6) Aero to suit the track - only on unambiguously-named rear wings, and
+    #    guarded by balance so it doesn't compound an existing imbalance.
+    if report.track.kind == "power" and not oversteer:
+        for w in ("WING_REAR", "WING_R"):
+            add(w, "dec", "trim rear wing for less drag / more top speed (power track)")
+    elif report.track.kind == "technical" and not understeer:
+        for w in ("WING_REAR", "WING_R"):
+            add(w, "inc", "add rear wing for cornering grip and stability (technical track)")
 
     if not changes:
         return Diagnosis(
@@ -388,10 +417,11 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
                  "or longer stint to surface more.",
             changes=[],
         )
-    areas = sorted({c.label.split()[0] for c in changes})
+    areas = sorted({(p.group if (p := manifest.get(c.section)) and p.group
+                     else c.label.split()[0]) for c in changes})
     return Diagnosis(
-        text=f"Full setup pass: {len(changes)} changes across {report.track.kind} "
-             f"track character, touching {', '.join(areas[:6])}"
+        text=f"Full setup pass: {len(changes)} changes for this {report.track.kind} "
+             f"track, touching {', '.join(areas[:6])}"
              + ("…" if len(areas) > 6 else "") + ".",
         changes=changes,
     )
@@ -411,6 +441,12 @@ def _clear_problem(report, manifest: CarManifest | None = None) -> str | None:
     if abs(delta) > 20:
         end = "rear" if delta < 0 else "front"
         return f"{end} tyres overheating ({abs(delta):.0f}C imbalance)"
+    pr = getattr(report, "pressures", None)
+    if pr is not None:
+        if pr.front_advice != "ok":
+            return f"front tyre pressure out of window ({pr.front_psi:.1f} psi)"
+        if pr.rear_advice != "ok":
+            return f"rear tyre pressure out of window ({pr.rear_psi:.1f} psi)"
     if getattr(report, "gearing", None) and report.gearing.issue:
         if manifest is None or _has_gear_params(manifest) or _has_wing(manifest):
             return report.gearing.issue.replace("_", " ")

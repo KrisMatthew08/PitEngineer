@@ -322,8 +322,10 @@ class AutoTuneApp:
             text=f"Balance: {s.tendency_strength} {s.tendency}   ·   "
                  f"Gearing: {report.gearing.issue.replace('_',' ') or 'ok'}")
         fl, fr, rl, rr = s.tyre_temp
+        pr = report.pressures
         self.tyres_lbl.configure(
-            text=f"Tyre temps °C   FL {fl:.0f} · FR {fr:.0f} · RL {rl:.0f} · RR {rr:.0f}")
+            text=f"Tyre temps °C   FL {fl:.0f} · FR {fr:.0f} · RL {rl:.0f} · RR {rr:.0f}"
+                 f"      ·      Hot psi  F {pr.front_psi:.1f} · R {pr.rear_psi:.1f}")
         loss = seg.worst_summary() or (
             report.consistency_note() or "Car looks balanced — good baseline.")
         self.corner_lbl.configure(text=loss)

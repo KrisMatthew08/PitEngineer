@@ -25,6 +25,10 @@ and lap times — so its advice is grounded in what your car actually did:
   from your own setups.
 - **Diagnoses from data, not vibes** — "moderate understeer, front axle
   overworked (fronts 12°C hotter)", read straight from your driving.
+- **Deep, guide-backed analysis** — dynamic camber under load, hot tyre
+  **pressures vs the ~26–28 psi window**, lock-ups and wheelspin (brakes/diff),
+  bottoming over kerbs, and where on the lap you lose time — each mapped to the
+  right lever using established race-engineering principles.
 - **Personalised to your style** — smooth vs aggressive, trail-braker vs not.
   The same car gets a different setup for you than for someone else.
 - **An iterative auto-tune loop** — it proposes a change, you apply it, drive

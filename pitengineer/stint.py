@@ -18,8 +18,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from .analysis import (BrakeDiffReport, CamberReport, KerbReport, TrackCharacter,
-                       analyze_brakes_diff, analyze_camber, analyze_kerbs, analyze_track)
+from .analysis import (BrakeDiffReport, CamberReport, KerbReport, PressureReport,
+                       TrackCharacter, analyze_brakes_diff, analyze_camber,
+                       analyze_kerbs, analyze_pressures, analyze_track)
 from .driver_profile import DriverProfile, compute_profile
 from .gearing import GearingReport, analyze_gearing
 from .shared_memory import ACTelemetry, PhysicsSnapshot
@@ -71,6 +72,7 @@ class StintReport:
     kerbs: KerbReport
     brakes: BrakeDiffReport
     track: TrackCharacter
+    pressures: PressureReport
 
     def describe(self) -> str:
         m = self.metrics
@@ -89,6 +91,8 @@ class StintReport:
         # Only surface advanced analysis when it found something actionable.
         if self.camber.has_issue:
             lines.append(self.camber.describe())
+        if self.pressures.has_issue:
+            lines.append(self.pressures.describe())
         if self.kerbs.has_issue:
             lines.append(self.kerbs.describe())
         if self.brakes.has_issue:
@@ -207,4 +211,5 @@ def analyze(data: StintData) -> StintReport:
         kerbs=analyze_kerbs(data.samples, data.susp_max_travel),
         brakes=analyze_brakes_diff(data.samples),
         track=analyze_track(data.samples),
+        pressures=analyze_pressures(data.samples),
     )

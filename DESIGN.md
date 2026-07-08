@@ -131,20 +131,34 @@ can't hallucinate an impossible setting.
   ids via the claude-api skill at build time.)
 
 ### 3.2 The domain knowledge (the "translator brain")
-A curated symptom → cause → parameter map seeds the model and keeps it honest.
-Sketch:
+A curated symptom → cause → parameter map (`knowledge.py`) seeds the model and
+keeps it honest. It's corner-phase aware — entry, mid, and exit each point to
+different primary levers — and backed by the ACC/AC setup cheat-sheet plus the
+Driver61 and Trinacria setup guides. Sketch:
 
 | Symptom (driver words) | Likely cause | First levers |
 | --- | --- | --- |
-| Loose / oversteer on power out | Too much rear grip loss / diff | Soften rear ARB, reduce power-side diff, add rear wing, rear pressure |
-| Won't turn in / understeer entry | Front grip / balance | Soften front ARB, more front camber, front toe-out, brake bias fwd |
+| Loose / oversteer on power out | Rear grip loss / diff snap | Soften rear ARB, reduce power-side diff, add rear wing, more rear camber |
+| Won't turn in / understeer | Front grip / roll balance | Soften front ARB (or stiffen rear), more front camber, front toe-out, brake bias rearward |
 | Snappy mid-corner | Aero/mechanical balance | Springs, camber, ride height, ARB balance |
-| Tyres overheating (one end) | Pressure/camber/load | Adjust pressure, camber, ARB |
-| Unstable under braking | Bias / rear stability | Brake bias, rear ride height, diff coast, rear ARB |
+| Tyres overheating / wrong pressure | Pressure/camber/overworked axle | Toward ~26–28 psi hot & ~75–95 °C core; camber; roll balance |
+| Fronts lock braking | Bias too far forward | Brake bias rearward, ABS, front pressure into window |
+| Rear steps out braking | Rear light / bias rearward | Brake bias forward, diff coast, rear toe-in, softer rear ARB |
+| Wheelspin bogging exit | Diff too aggressive / rear grip | Reduce power diff & preload, softer rear ARB, more rear wing |
+| Unsettled over kerbs | Bottoming or wheel skating | Bump stops / ride height (bottoming) or softer bump damping (skating) |
+
+**Target windows** (`knowledge.py` constants, shared with the analyzers): racing
+tyres run best around **26–28 psi hot** and **75–95 °C core**; the loaded/outer
+tyre wants slightly-negative dynamic camber under max load. The analyzers
+(`analysis.py`) read AC's live channels — including hot tyre **pressure in PSI**
+— and compare against these windows so pressure/camber advice is quantitative,
+not guessed.
 
 This lives as structured data the model can reference — it's the difference
 between a lookup table and an AI that reasons over the driver's specific car,
-telemetry, and history.
+telemetry, and history. The deterministic **Full Setup Pass** (`translator.py`)
+applies the same principles without any model, so users always get correct-
+direction changes even offline.
 
 ### 3.3 Driver personalization (the "for the driver" part)
 Phase 3. From telemetry inputs we derive a profile:
