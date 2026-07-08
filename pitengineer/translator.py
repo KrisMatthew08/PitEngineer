@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .engines import Engine, make_engine
-from .knowledge import format_for_prompt, relevant_entries
+from .knowledge import (PRESSURE_HOT_IDEAL_HI, PRESSURE_HOT_IDEAL_LO,
+                        format_for_prompt, relevant_entries)
 from .manifest import CarManifest
 from .setup_file import Setup
 
@@ -303,126 +304,179 @@ def _has_wing(manifest: CarManifest) -> bool:
     return any(name.upper().startswith("WING") for name in manifest.parameters)
 
 
+def _rear_wing_name(manifest: CarManifest) -> str | None:
+    """Best guess at the car's REAR-wing parameter, across naming conventions.
+
+    Prefer an explicitly-named rear wing; otherwise a single adjustable wing is
+    almost always the rear, and with several numbered wings the highest-numbered
+    is the rear-most.
+    """
+    params = manifest.parameters
+    for pref in ("WING_REAR", "WING_R"):
+        if pref in params:
+            return pref
+    wings = sorted(n for n in params if n.upper().startswith("WING"))
+    return wings[-1] if wings else None
+
+
 def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagnosis:
-    """Comprehensive setup pass built from the analyzers - a change for every
-    issue the telemetry flags, each in the correct direction, using only the
-    car's real parameters. Deterministic and model-independent.
+    """A COMPLETE setup in one go, built from the driver's telemetry AND style -
+    the "just sort my whole car out" pass. Every system the data flags gets a
+    meaningful, correct-direction change, using only the car's real parameters.
+    Deterministic and model-independent, so it's always available (even offline).
+
+    Change sizes are a fraction of each parameter's range (capped where a system
+    is sensitive), so they're big enough to feel yet safe - and AC clamps any
+    value it doesn't like when the setup loads.
     """
     changes: list[Change] = []
     used: set[str] = set()
 
-    def add(section: str, direction: str, reason: str, steps: int = 1) -> None:
-        # direction: "dec"/"inc" (index). Camber "add" = more negative = dec.
+    def change(section: str, direction: str, reason: str,
+               frac: float = 0.30, max_steps: int | None = None) -> bool:
+        # direction: "dec"/"inc" in index space. Move `frac` of the range,
+        # snapped to a legal step, at least one step, capped by max_steps.
         if section in used:
-            return
+            return False
         p = manifest.get(section)
         cur = setup.get(section)
         if p is None or cur is None:
-            return
-        delta = p.step * steps
-        new = p.clamp(cur - delta) if direction == "dec" else p.clamp(cur + delta)
+            return False
+        span = max(p.step, p.max - p.min)
+        delta = max(p.step, round(span * frac))
+        if max_steps is not None:
+            delta = min(delta, p.step * max_steps)
+        target = cur - delta if direction == "dec" else cur + delta
+        new = p.clamp(target)
+        if new == cur:  # already at that end; nudge a single step if there's room
+            new = p.clamp(cur - p.step if direction == "dec" else cur + p.step)
         if new == cur:
-            return
+            return False
         changes.append(Change(section=section, label=p.label, current_index=cur,
                               proposed_index=new, reason=reason,
                               confidence="medium", clamped=False))
         used.add(section)
+        return True
+
+    def any_of(sections, direction, reason, **kw):
+        for sec in sections:
+            change(sec, direction, reason, **kw)
 
     s = report.summary
     cam = report.camber
-    understeer = s.tendency == "understeer" and s.tendency_strength in ("moderate", "strong")
-    oversteer = s.tendency == "oversteer" and s.tendency_strength in ("moderate", "strong")
-
-    # 1) Camber (add camber = more negative = DECREASE the index). Driven by the
-    #    dynamic-camber analysis, so we never fight an already-good camber.
-    if cam.front_advice == "add":
-        for w in ("CAMBER_LF", "CAMBER_RF"):
-            add(w, "dec", "add front camber - loaded tyre was rolling onto its edge")
-    elif cam.front_advice == "reduce":
-        for w in ("CAMBER_LF", "CAMBER_RF"):
-            add(w, "inc", "reduce front camber - too much under load (riding the inner edge)")
-    if cam.rear_advice == "add":
-        for w in ("CAMBER_LR", "CAMBER_RR"):
-            add(w, "dec", "add rear camber for more rear grip under load")
-    elif cam.rear_advice == "reduce":
-        for w in ("CAMBER_LR", "CAMBER_RR"):
-            add(w, "inc", "reduce rear camber - too much under load")
-
-    # 2) Tyre pressures -> toward the racing window, from measured HOT psi.
-    #    Higher index = higher pressure. Only fires when clearly out of band.
     pr = report.pressures
-    if pr.front_advice == "raise":
-        for w in ("PRESSURE_LF", "PRESSURE_RF"):
-            add(w, "inc", f"front hot pressure low ({pr.front_psi:.1f} psi) - raise into the ~27 psi window")
-    elif pr.front_advice == "lower":
-        for w in ("PRESSURE_LF", "PRESSURE_RF"):
-            add(w, "dec", f"front hot pressure high ({pr.front_psi:.1f} psi) - lower into the ~27 psi window")
-    if pr.rear_advice == "raise":
-        for w in ("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"):
-            add(w, "inc", f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise into the window")
-    elif pr.rear_advice == "lower":
-        for w in ("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"):
-            add(w, "dec", f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower into the window")
-
-    # 3) Balance -> anti-roll bars (softer = lower index). One primary lever per
-    #    axle so we don't overshoot into the opposite problem.
-    if understeer:
-        add("ARB_FRONT", "dec", "soften front bar to cut understeer (more front grip in roll)")
-        add("ARB_F", "dec", "soften front bar to cut understeer (more front grip in roll)")
-    elif oversteer:
-        add("ARB_REAR", "dec", "soften rear bar to cut oversteer (more rear grip in roll)")
-        add("ARB_R", "dec", "soften rear bar to cut oversteer (more rear grip in roll)")
-
-    # 4) Brakes & diff
+    prof = report.profile
     b = report.brakes
-    if b.front_lock:
-        add("FRONT_BIAS", "dec", "fronts lock under braking - shift bias rearward")
-        add("BRAKE_BIAS", "dec", "fronts lock under braking - shift bias rearward")
-    if b.rear_lock:
-        add("FRONT_BIAS", "inc", "rears lock under braking - shift bias forward")
-        add("BRAKE_BIAS", "inc", "rears lock under braking - shift bias forward")
-        add("DIFF_COAST", "inc", "add coast lock to steady the rear on entry")
-    if b.wheelspin:
-        add("DIFF_POWER", "dec", "rear wheelspin on power - reduce power diff lock")
-        add("DIFF_PRELOAD", "dec", "reduce diff preload to smooth power delivery on exit")
-
-    # 5) Kerbs / suspension
     k = report.kerbs
+
+    lean_us = s.tendency == "understeer"
+    lean_os = s.tendency == "oversteer"
+    strong = s.tendency_strength in ("moderate", "strong")
+    # Driving-style read: aggressive/inconsistent drivers want a forgiving rear;
+    # smooth+consistent drivers can take a pointier car.
+    aggressive = prof.aggression > 0.6 or prof.consistency < 0.4
+    trailbraker = prof.trail_brake > 0.5
+
+    # 1) CAMBER - move decisively toward the grip window (direction from the
+    #    dynamic-camber analysis; more negative = "add").
+    if cam.front_advice == "add":
+        any_of(("CAMBER_LF", "CAMBER_RF"), "dec",
+               "add front camber - the loaded front was rolling onto its outer edge", frac=0.5)
+    elif cam.front_advice == "reduce":
+        any_of(("CAMBER_LF", "CAMBER_RF"), "inc",
+               "reduce front camber - it was riding the inner edge", frac=0.5)
+    if cam.rear_advice == "add":
+        any_of(("CAMBER_LR", "CAMBER_RR"), "dec",
+               "add rear camber for more rear grip under load", frac=0.5)
+    elif cam.rear_advice == "reduce":
+        any_of(("CAMBER_LR", "CAMBER_RR"), "inc",
+               "reduce rear camber - too much under load", frac=0.5)
+
+    # 2) TYRE PRESSURES - toward the ~26-28 psi hot window (measured). Small,
+    #    careful moves (pressure is sensitive).
+    if pr.front_psi > 5:
+        if pr.front_psi > PRESSURE_HOT_IDEAL_HI:
+            any_of(("PRESSURE_LF", "PRESSURE_RF"), "dec",
+                   f"front hot pressure high ({pr.front_psi:.1f} psi) - lower toward ~27", frac=0.25, max_steps=2)
+        elif pr.front_psi < PRESSURE_HOT_IDEAL_LO:
+            any_of(("PRESSURE_LF", "PRESSURE_RF"), "inc",
+                   f"front hot pressure low ({pr.front_psi:.1f} psi) - raise toward ~27", frac=0.25, max_steps=2)
+    if pr.rear_psi > 5:
+        if pr.rear_psi > PRESSURE_HOT_IDEAL_HI:
+            any_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "dec",
+                   f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower toward ~27", frac=0.25, max_steps=2)
+        elif pr.rear_psi < PRESSURE_HOT_IDEAL_LO:
+            any_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "inc",
+                   f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise toward ~27", frac=0.25, max_steps=2)
+
+    # 3) BALANCE - anti-roll bars (softer end = lower). Any lean acts; strength
+    #    scales how far we move.
+    bal_frac = 0.35 if strong else 0.2
+    if lean_us:
+        any_of(("ARB_FRONT", "ARB_F"), "dec",
+               "soften the front anti-roll bar to cut understeer (more front grip in roll)", frac=bal_frac)
+    elif lean_os:
+        any_of(("ARB_REAR", "ARB_R"), "dec",
+               "soften the rear anti-roll bar to cut oversteer (more rear grip in roll)", frac=bal_frac)
+
+    # 4) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
+    if b.front_lock:
+        any_of(("FRONT_BIAS", "BRAKE_BIAS"), "dec",
+               "fronts lock under braking - shift brake bias rearward", frac=0.2, max_steps=4)
+    elif b.rear_lock or trailbraker:
+        why = "shift brake bias forward for a stable braking entry" + (
+            " (you trail-brake a lot)" if trailbraker and not b.rear_lock else "")
+        any_of(("FRONT_BIAS", "BRAKE_BIAS"), "inc", why, frac=0.2, max_steps=4)
+        change("DIFF_COAST", "inc", "more coast lock to settle the rear off-throttle", frac=0.25, max_steps=4)
+
+    # 5) DIFFERENTIAL / traction - wheelspin, or an aggressive/inconsistent
+    #    driver, wants a more forgiving power diff.
+    if b.wheelspin or aggressive:
+        why = "reduce power-diff lock for cleaner traction on exit" + (
+            " and a more forgiving car for your style" if aggressive and not b.wheelspin else "")
+        change("DIFF_POWER", "dec", why, frac=0.25, max_steps=4)
+        if b.wheelspin:
+            change("DIFF_PRELOAD", "dec",
+                   "less preload smooths power delivery out of slow corners", frac=0.25, max_steps=4)
+
+    # 6) AERO - trim for a power track / add for a technical one; add for a loose
+    #    rear at speed. Guarded by balance so we don't worsen an existing lean.
+    rw = _rear_wing_name(manifest)
+    if rw:
+        if lean_os and strong:
+            change(rw, "inc", "add rear wing to steady a loose rear at speed", frac=0.25, max_steps=3)
+        elif report.track.kind == "power" and not lean_os:
+            change(rw, "dec", "trim rear wing for less drag / more top speed on this power track",
+                   frac=0.25, max_steps=3)
+        elif report.track.kind == "technical" and not lean_us:
+            change(rw, "inc", "add rear wing for cornering grip and high-speed stability",
+                   frac=0.25, max_steps=3)
+
+    # 7) KERBS / ride height - bottoming, or a wheel skating over kerbs.
     if k.issue == "bottoming":
         end = "R" if "rear" in k.worst_wheel else "F"
-        for w in (f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"):
-            add(w, "inc", "stiffen bump stops - car bottoms out over kerbs")
-        # Ride height: covers both the per-corner rod-length convention (Kunos)
-        # and the single front/rear height convention (many mods).
-        for w in (f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}", f"HEIGHT_{end}"):
-            add(w, "inc", "raise ride height a touch to stop bottoming")
+        any_of((f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"), "inc",
+               "stiffen bump stops - the car bottoms over kerbs/compressions", frac=0.25, max_steps=3)
+        any_of((f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}", f"HEIGHT_{end}"), "inc",
+               "raise ride height a touch to stop bottoming", frac=0.2, max_steps=3)
     elif k.issue == "wheels_light":
         end = "R" if "rear" in k.worst_wheel else "F"
-        for w in (f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"):
-            add(w, "dec", "soften bump damping so the wheel follows the kerb")
-
-    # 6) Aero to suit the track - only on unambiguously-named rear wings, and
-    #    guarded by balance so it doesn't compound an existing imbalance.
-    if report.track.kind == "power" and not oversteer:
-        for w in ("WING_REAR", "WING_R"):
-            add(w, "dec", "trim rear wing for less drag / more top speed (power track)")
-    elif report.track.kind == "technical" and not understeer:
-        for w in ("WING_REAR", "WING_R"):
-            add(w, "inc", "add rear wing for cornering grip and stability (technical track)")
+        any_of((f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"), "dec",
+               "soften bump damping so the wheel follows the kerb", frac=0.25, max_steps=3)
 
     if not changes:
         return Diagnosis(
-            text="Full setup pass: the telemetry doesn't flag a clear problem in "
-                 "any area right now - the car looks well sorted. Drive a harder "
-                 "or longer stint to surface more.",
+            text="Full setup pass: your telemetry doesn't flag a clear problem in "
+                 "any area right now - the car looks well sorted for how you're "
+                 "driving. Push harder or run a longer stint to surface more.",
             changes=[],
         )
     areas = sorted({(p.group if (p := manifest.get(c.section)) and p.group
                      else c.label.split()[0]) for c in changes})
+    style = prof.labels.get("aggression", "")
     return Diagnosis(
-        text=f"Full setup pass: {len(changes)} changes for this {report.track.kind} "
-             f"track, touching {', '.join(areas[:6])}"
-             + ("…" if len(areas) > 6 else "") + ".",
+        text=f"Full setup pass for your {style} style on this {report.track.kind} "
+             f"track: {len(changes)} changes across {', '.join(areas)}.",
         changes=changes,
     )
 

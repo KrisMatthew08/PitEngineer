@@ -16,7 +16,8 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, scrolledtext
 
-from .car_data import build_manifest_from_setups, find_current_setup
+from .car_data import (build_manifest_from_setups, find_current_setup,
+                       track_setup_target)
 from .engines import make_engine
 from .session_log import SessionMemory, StintRecord
 from .setup_file import load_setup, writable_target, write_setup
@@ -235,9 +236,17 @@ class AutoTuneApp:
             messagebox.showerror("No setup file",
                                  f"No setup found for {car} / {track}. Save one in-game.")
             return
+        switched = bool(self.car) and (car != self.car or track != self.track)
         self.car, self.track = car, track
         self.manifest, self.setup_path = manifest, setup_path
         self.setup = load_setup(setup_path)
+        if switched:
+            # New car/track: drop state tied to the previous one so we don't
+            # judge this car against the old car's last change.
+            self.last_change = None
+            self.pending = None
+            self.stint_no = 0
+            self.apply_btn.configure(state="disabled")
         self.stint_btn.configure(state="normal")
         self._log(f"Detected {car} @ {track} — learned {len(manifest.parameters)} "
                   f"params from your setups. Tuning {setup_path.name}.", header=True)
@@ -373,7 +382,11 @@ class AutoTuneApp:
         if not self.pending:
             return
         changes = {c.section: c.proposed_index for c in self.pending.changes}
-        target = writable_target(self.setup_path)
+        # Save into the LIVE track's folder (…/<car>/<track>/pitengineer.ini) so
+        # AC loads it for this track - not generic. Fall back to redirecting
+        # last.ini -> pitengineer.ini in the source folder if the track is unknown.
+        target = track_setup_target(self.car, self.track) or writable_target(self.setup_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
         out = None if target == self.setup_path else target
         written = write_setup(self.setup, changes, out_path=out, backup=True)
         self.last_change = {c.section: (c.current_index, c.proposed_index)
