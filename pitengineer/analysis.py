@@ -18,8 +18,12 @@ Wheel order is [FL, FR, RL, RR] throughout.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from .knowledge import (CAMBER_LOADED_IDEAL_HI, CAMBER_LOADED_IDEAL_LO,
+                        PRESSURE_HOT_IDEAL_HI, PRESSURE_HOT_IDEAL_LO,
+                        PRESSURE_HOT_SANE_HI, PRESSURE_HOT_SANE_LO,
+                        TYRE_TEMP_COLD, TYRE_TEMP_HOT)
 from .shared_memory import PhysicsSnapshot
 
 _RAD2DEG = 180.0 / math.pi
@@ -62,7 +66,7 @@ class CamberReport:
 
 
 # Ideal dynamic camber on the loaded tyre at max cornering (degrees, negative).
-_CAMBER_IDEAL_LO, _CAMBER_IDEAL_HI = -3.5, -1.2
+_CAMBER_IDEAL_LO, _CAMBER_IDEAL_HI = CAMBER_LOADED_IDEAL_LO, CAMBER_LOADED_IDEAL_HI
 
 
 def analyze_camber(samples: list[PhysicsSnapshot]) -> CamberReport:
@@ -112,6 +116,92 @@ def analyze_camber(samples: list[PhysicsSnapshot]) -> CamberReport:
         notes.append("too much rear camber - REDUCE it")
     note = "; ".join(notes) if notes else "camber looks about right for the grip you're getting."
     return CamberReport(round(front, 1), round(rear, 1), fa, ra, note)
+
+
+# --------------------------------------------------------------------------- #
+# Tyre pressures & temperatures
+# --------------------------------------------------------------------------- #
+@dataclass
+class PressureReport:
+    """Hot running pressures (PSI) vs the racing window, per axle.
+
+    AC publishes live tyre pressure (wheelsPressure, PSI). We average the hot
+    running pressure per corner and compare to the ~26-28 psi racing window.
+    advice is "raise" | "lower" | "ok" per axle; we only advise a change when a
+    pressure is outside a wide *sane* band, since the ideal window varies by car.
+    """
+    front_psi: float
+    rear_psi: float
+    front_advice: str   # "raise" | "lower" | "ok"
+    rear_advice: str
+    hot_front: bool     # front tyres overheating (core temp)
+    hot_rear: bool
+    cold: bool          # tyres never reaching temperature
+    note: str = ""
+
+    def describe(self) -> str:
+        return (f"Tyre pressures (hot): front {self.front_psi:.1f} psi, "
+                f"rear {self.rear_psi:.1f} psi (window "
+                f"{PRESSURE_HOT_IDEAL_LO:.0f}-{PRESSURE_HOT_IDEAL_HI:.0f}). "
+                f"{self.note}")
+
+    @property
+    def has_issue(self) -> bool:
+        return (self.front_advice != "ok" or self.rear_advice != "ok"
+                or self.cold or self.hot_front or self.hot_rear)
+
+
+def analyze_pressures(samples: list[PhysicsSnapshot]) -> PressureReport:
+    """Average hot pressures/temps per axle and advise toward the racing window."""
+    src = _driving(samples)
+    if not src:
+        return PressureReport(0.0, 0.0, "ok", "ok", False, False, False,
+                              "no running data.")
+
+    def axle(idx_a: int, idx_b: int, field_getter) -> float:
+        return _mean([(field_getter(s)[idx_a] + field_getter(s)[idx_b]) / 2
+                      for s in src])
+
+    front_psi = axle(0, 1, lambda s: s.tyre_pressure)
+    rear_psi = axle(2, 3, lambda s: s.tyre_pressure)
+    front_temp = axle(0, 1, lambda s: s.tyre_core_temp)
+    rear_temp = axle(2, 3, lambda s: s.tyre_core_temp)
+
+    def advice(psi: float) -> str:
+        # Only act when clearly outside a sane racing band; inside it, leave
+        # pressure to the balance levers (car-specific optimum varies).
+        if psi < PRESSURE_HOT_SANE_LO:
+            return "raise"
+        if psi > PRESSURE_HOT_SANE_HI:
+            return "lower"
+        return "ok"
+
+    fa, ra = advice(front_psi), advice(rear_psi)
+    hot_front = front_temp > TYRE_TEMP_HOT
+    hot_rear = rear_temp > TYRE_TEMP_HOT
+    cold = max(front_temp, rear_temp) < TYRE_TEMP_COLD
+
+    notes: list[str] = []
+    if fa == "raise":
+        notes.append(f"front pressure low ({front_psi:.1f} psi) - raise it into the window")
+    elif fa == "lower":
+        notes.append(f"front pressure high ({front_psi:.1f} psi) - lower it into the window")
+    if ra == "raise":
+        notes.append(f"rear pressure low ({rear_psi:.1f} psi) - raise it")
+    elif ra == "lower":
+        notes.append(f"rear pressure high ({rear_psi:.1f} psi) - lower it")
+    if cold:
+        notes.append("tyres never reach temperature - lower pressures / open ducts less, "
+                     "or they simply need more push")
+    elif hot_front and hot_rear:
+        notes.append("all four tyres overheating - ease the pace or address camber/pressures")
+    elif hot_front:
+        notes.append("front tyres overheating - front axle is overworked")
+    elif hot_rear:
+        notes.append("rear tyres overheating - rear axle is overworked")
+    note = "; ".join(notes) if notes else "pressures and temps look reasonable."
+    return PressureReport(round(front_psi, 1), round(rear_psi, 1), fa, ra,
+                          hot_front, hot_rear, cold, note)
 
 
 # --------------------------------------------------------------------------- #
