@@ -11,11 +11,15 @@ AI diagnosis) runs on worker threads so the window stays responsive.
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import tkinter as tk
-from tkinter import font as tkfont
+from pathlib import Path
+from tkinter import filedialog, font as tkfont
 from tkinter import messagebox, scrolledtext
 
+from .app import _load_dotenv
 from .car_data import (build_manifest_from_setups, find_current_setup,
                        track_setup_target)
 from .engines import make_engine
@@ -39,14 +43,44 @@ WARN = "#f1c40f"
 DOT = {"LIVE": GOOD, "PAUSE": WARN, "OFF": BAD, "REPLAY": MUTED}
 
 
+def _settings_path() -> Path:
+    base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    return base / "PitEngineer" / "settings.json"
+
+
+def _load_saved_setups_dir() -> Path | None:
+    path = _settings_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = data.get("setups_dir")
+    if not value:
+        return None
+    return Path(value).expanduser()
+
+
+def _save_setups_dir(value: Path) -> None:
+    path = _settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"setups_dir": str(value)}, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
 class AutoTuneApp:
     def __init__(self, root: tk.Tk, engine_kind: str = "ollama",
-                 model: str | None = None) -> None:
+                 model: str | None = None,
+                 setups_dir: str | Path | None = None) -> None:
         self.root = root
         root.title("PitEngineer — AI Race Engineer")
         root.configure(bg=BG)
         root.minsize(820, 720)
 
+        self.setups_dir = Path(setups_dir).expanduser() if setups_dir else _load_saved_setups_dir()
         self.engine = make_engine(engine_kind, model)
         self.memory = SessionMemory()
         self.car = ""
@@ -101,6 +135,46 @@ class AutoTuneApp:
                       disabledforeground=MUTED)
         return b
 
+    def _setups_dir_text(self) -> str:
+        if self.setups_dir:
+            return f"Setups folder: {self.setups_dir}"
+        return "Setups folder: Windows default (Documents/Assetto Corsa/setups)"
+
+    def _choose_setups_dir(self) -> None:
+        start = str(self.setups_dir or Path.home())
+        chosen = filedialog.askdirectory(
+            title="Choose Assetto Corsa setups folder",
+            initialdir=start,
+            mustexist=True,
+        )
+        if not chosen:
+            return
+        self.setups_dir = Path(chosen)
+        _save_setups_dir(self.setups_dir)
+        self.setups_lbl.configure(text=self._setups_dir_text())
+        self.car = ""
+        self.track = ""
+        self.manifest = None
+        self.setup = None
+        self.setup_path = None
+        self.pending = None
+        self.last_change = None
+        self.recording = False
+        self.apply_btn.configure(state="disabled")
+        self.stint_btn.configure(state="disabled", text="● Start stint")
+        self.change_placeholder.destroy()
+        self.change_placeholder = tk.Label(
+            self.change_box,
+            text="Pick a car again after changing the setups folder.",
+            font=self.f_body,
+            bg=PANEL,
+            fg=MUTED,
+            anchor="w",
+        )
+        self.change_placeholder.pack(anchor="w")
+        self._status("Setups folder changed. Press Detect car again.")
+        self._log(f"Setups folder changed to: {self.setups_dir}", header=True)
+
     # ---------- build ----------
     def _build(self) -> None:
         pad = 14
@@ -118,8 +192,14 @@ class AutoTuneApp:
         self.sub_lbl = tk.Label(htext, text=f"Engine: {self.engine.name}",
                                 font=self.f_sub, bg=BG, fg=MUTED, anchor="w")
         self.sub_lbl.pack(anchor="w")
+        self.setups_lbl = tk.Label(htext, text=self._setups_dir_text(),
+                       font=self.f_sub, bg=BG, fg=MUTED, anchor="w",
+                       wraplength=560, justify="left")
+        self.setups_lbl.pack(anchor="w")
         self.detect_btn = self._btn(head, "Detect car", self._detect, accent=False)
         self.detect_btn.pack(side="right")
+        self.setups_btn = self._btn(head, "Setups folder", self._choose_setups_dir, accent=False)
+        self.setups_btn.pack(side="right", padx=(0, 8))
 
         # Stat tiles
         tiles = tk.Frame(self.root, bg=BG)
@@ -156,8 +236,28 @@ class AutoTuneApp:
         bar.pack(fill="x")
         tk.Label(hero, text="PROPOSED CHANGE", font=self.f_h, bg=PANEL,
                  fg=ACCENT).pack(anchor="w", padx=12, pady=(10, 4))
-        self.change_box = tk.Frame(hero, bg=PANEL)
-        self.change_box.pack(fill="x", padx=12, pady=(0, 6))
+        
+        # Scrollable change box (max height so bottom bar stays visible)
+        change_wrap = tk.Frame(hero, bg=PANEL, height=200)
+        change_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        change_wrap.pack_propagate(False)
+        change_canvas = tk.Canvas(change_wrap, bg=PANEL, bd=0, highlightthickness=0)
+        change_scrollbar = tk.Scrollbar(change_wrap, orient="vertical", command=change_canvas.yview)
+        self.change_box = tk.Frame(change_canvas, bg=PANEL)
+        self.change_box.bind("<Configure>", 
+            lambda e: change_canvas.configure(scrollregion=change_canvas.bbox("all")))
+        change_canvas.create_window((0, 0), window=self.change_box, anchor="nw")
+        change_canvas.configure(yscrollcommand=change_scrollbar.set)
+        
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            change_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        change_canvas.bind("<MouseWheel>", _on_mousewheel)
+        self.change_box.bind("<MouseWheel>", _on_mousewheel)
+        
+        change_canvas.pack(side="left", fill="both", expand=True)
+        change_scrollbar.pack(side="right", fill="y")
+        
         self.change_placeholder = tk.Label(
             self.change_box, text="Drive a stint and I'll propose a change here.",
             font=self.f_body, bg=PANEL, fg=MUTED, anchor="w")
@@ -241,11 +341,11 @@ class AutoTuneApp:
                                    "on track (not the menu), then retry.")
             return
         try:
-            manifest = build_manifest_from_setups(car, display_name=car)
+            manifest = build_manifest_from_setups(car, self.setups_dir, display_name=car)
         except FileNotFoundError as exc:
             messagebox.showerror("No setups found", str(exc))
             return
-        setup_path = find_current_setup(car, track)
+        setup_path = find_current_setup(car, track, self.setups_dir)
         if not setup_path:
             messagebox.showerror("No setup file",
                                  f"No setup found for {car} / {track}. Save one in-game.")
@@ -399,7 +499,7 @@ class AutoTuneApp:
         # Save into the LIVE track's folder (…/<car>/<track>/pitengineer.ini) so
         # AC loads it for this track - not generic. Fall back to redirecting
         # last.ini -> pitengineer.ini in the source folder if the track is unknown.
-        target = track_setup_target(self.car, self.track) or writable_target(self.setup_path)
+        target = track_setup_target(self.car, self.track, self.setups_dir) or writable_target(self.setup_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         out = None if target == self.setup_path else target
         written = write_setup(self.setup, changes, out_path=out, backup=True)
@@ -426,14 +526,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="PitEngineer (GUI)")
     parser.add_argument("--engine", default="ollama", choices=["ollama", "claude"])
     parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--setups-dir",
+        default=None,
+        help="Root Assetto Corsa setups folder (defaults to Documents/Assetto Corsa/setups)",
+    )
     args = parser.parse_args()
+    _load_dotenv()
+
+    setups_dir = Path(args.setups_dir).expanduser() if args.setups_dir else _load_saved_setups_dir()
 
     # Use whatever model is actually bundled; fall back to the default in dev.
     model = args.model
     if model is None and args.engine == "ollama":
         model = bundled_model_name() or BUNDLED_MODEL
     root = tk.Tk()
-    AutoTuneApp(root, args.engine, model)
+    AutoTuneApp(root, args.engine, model, setups_dir=setups_dir)
     root.mainloop()
     return 0
 

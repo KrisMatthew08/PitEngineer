@@ -18,6 +18,7 @@ it never proposes a value the driver hasn't already used somewhere.)
 from __future__ import annotations
 
 import json
+import os
 from math import gcd
 from pathlib import Path
 
@@ -47,9 +48,21 @@ def default_setups_dir() -> Path:
     return Path.home() / "Documents" / "Assetto Corsa" / "setups"
 
 
+def configured_setups_dir(value: str | Path | None = None) -> Path:
+    """User-configured setups root, falling back to the Windows default.
+
+    The environment variable lets users point PitEngineer at redirected
+    Documents folders such as OneDrive-backed AC setups.
+    """
+    raw = value if value is not None else os.environ.get("PITENGINEER_SETUPS_DIR")
+    if raw:
+        return Path(raw).expanduser()
+    return default_setups_dir()
+
+
 def list_cars(setups_dir: Path | None = None) -> list[str]:
     """Car ids the driver has setups for."""
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     if not setups_dir.exists():
         return []
     return sorted(p.name for p in setups_dir.iterdir() if p.is_dir())
@@ -59,7 +72,7 @@ def discover_setup_files(car_id: str, setups_dir: Path | None = None) -> list[Pa
     """All .ini setup files for a car, across every track folder."""
     if not car_id or not car_id.strip():
         return []  # empty car id (e.g. AC not running) - never scan everything
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     car_dir = setups_dir / car_id
     if not car_dir.exists():
         return []
@@ -122,6 +135,7 @@ def build_manifest_from_setups(
     display_name: str | None = None,
 ) -> CarManifest:
     """Scan a car's setups and derive a manifest (params + safe ranges)."""
+    setups_dir = setups_dir or configured_setups_dir()
     files = discover_setup_files(car_id, setups_dir)
     if not files:
         raise FileNotFoundError(
@@ -185,7 +199,7 @@ def find_current_setup(
     """
     if not car_id or not car_id.strip():
         return None
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     track_dir = setups_dir / car_id / track_id
     candidates: list[Path] = []
     if track_dir.exists():
@@ -213,7 +227,7 @@ def track_setup_target(
     """
     if not car_id or not car_id.strip() or not track_id or not track_id.strip():
         return None
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     return setups_dir / car_id / track_id / name
 
 

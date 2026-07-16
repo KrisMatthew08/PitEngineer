@@ -269,6 +269,21 @@ def diagnose_autotune(
     result = engine.propose(system, user, CHANGES_SCHEMA)
     diag = _validate(result, setup, manifest)
 
+    # If telemetry says gearing is the limiting issue and the car exposes a
+    # gear lever, force a gear-related step to the front of the list instead of
+    # letting the model bury it behind balance tweaks.
+    if report.gearing.issue and can_adjust_gears:
+        gear_diag = _fallback_change(report, setup, manifest, report.gearing.issue)
+        if gear_diag.changes:
+            merged: list[Change] = []
+            seen: set[str] = set()
+            for change in gear_diag.changes + diag.changes:
+                if change.section in seen:
+                    continue
+                merged.append(change)
+                seen.add(change.section)
+            diag = Diagnosis(text=diag.text or gear_diag.text, changes=merged)
+
     # Guard against a false "dialled in": if the model returns no changes but the
     # telemetry shows a clear, unresolved problem, don't accept it - re-prompt
     # forcefully, then fall back to a rule-based fix so the driver always gets
@@ -517,10 +532,31 @@ def _fallback_change(report, setup: Setup, manifest: CarManifest,
     s = report.summary
     candidates: list[tuple[str, str]] = []
 
-    # Gearing issue but no gear params -> trim wing for straight-line speed.
-    if report.gearing.issue and not _has_gear_params(manifest):
-        candidates += [(w, "dec") for w in
-                       ("WING_2", "WING_1", "WING_REAR", "WING_9", "WING_3", "WING_10")]
+    # Gearing issue: propose gear change if available, else trim wing.
+    if report.gearing.issue:
+        if _has_gear_params(manifest):
+            # Gears too short -> longer ratios (increase final drive / gear ratios)
+            # Gears too tall -> shorter ratios (decrease final drive / gear ratios)
+            dirn = "inc" if "short" in report.gearing.issue else "dec"
+            gear_names = [
+                name for name in manifest.adjustable_names()
+                if any(h in name.upper() for h in _GEAR_HINTS)
+            ]
+            priority = [
+                "FINAL_GEAR_RATIO", "FINAL_DRIVE", "GEARSET",
+                "GEAR_6", "GEAR_5", "GEAR_4", "GEAR_3", "GEAR_2", "GEAR_1",
+            ] if report.gearing.issue == "gears_too_short" else [
+                "GEAR_1", "GEAR_2", "GEAR_3", "GEAR_4", "GEAR_5", "GEAR_6",
+                "GEARSET", "FINAL_DRIVE", "FINAL_GEAR_RATIO",
+            ]
+            ordered = [name for name in priority if name in gear_names]
+            if not ordered:
+                ordered = gear_names
+            candidates += [(g, dirn) for g in ordered]
+        else:
+            # No gear params -> trim wing for straight-line speed instead
+            candidates += [(w, "dec") for w in
+                           ("WING_2", "WING_1", "WING_REAR", "WING_9", "WING_3", "WING_10")]
     if s.tendency == "oversteer":
         candidates += [("ARB_REAR", "dec"), ("ARB_R", "dec"),
                        ("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"), ("PRESSURE_LR", "dec")]

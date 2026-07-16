@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,59 @@ from pathlib import Path
 from pitengineer.ollama_manager import BUNDLED_MODEL, find_ollama_exe
 
 STAGING = Path("build_staging")
+DESKTOP_TARGET = Path.home() / "Desktop" / "PitEngineer"
+
+
+def _remove_tree(path: Path) -> None:
+    if path.exists():
+        for entry in path.rglob("*"):
+            try:
+                os.chmod(entry, stat.S_IWRITE)
+            except OSError:
+                pass
+        try:
+            os.chmod(path, stat.S_IWRITE)
+        except OSError:
+            pass
+
+    def _onerror(func, target, exc_info):
+        try:
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except OSError:
+            raise
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
+def _sync_tree(src: Path, dst: Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    source_relpaths: set[Path] = set()
+
+    for item in src.rglob("*"):
+        rel = item.relative_to(src)
+        source_relpaths.add(rel)
+        target = dst / rel
+        if item.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(item, target)
+        except OSError:
+            continue
+
+    for item in sorted(dst.rglob("*"), reverse=True):
+        rel = item.relative_to(dst)
+        if rel in source_relpaths:
+            continue
+        try:
+            if item.is_dir():
+                item.rmdir()
+            else:
+                item.unlink()
+        except OSError:
+            continue
 
 
 def ollama_models_root() -> Path:
@@ -106,7 +160,17 @@ def build() -> int:
         "PitEngineer.py",
     ]
     print("Running:", " ".join(cmd))
-    return subprocess.call(cmd)
+    result = subprocess.call(cmd)
+    if result != 0:
+        return result
+
+    dist = Path("dist") / "PitEngineer"
+    if not dist.exists():
+        raise SystemExit(f"Build finished but output folder was not found: {dist}")
+
+    _sync_tree(dist, DESKTOP_TARGET)
+    print(f"Copied build to: {DESKTOP_TARGET}")
+    return 0
 
 
 def main() -> int:
