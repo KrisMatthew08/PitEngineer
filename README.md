@@ -221,12 +221,6 @@ clamped to the car's real min/max/step and hallucinated parameters are dropped.
 
 ## Changelog
 
-### 1.1.1 — Gearing and release polish
-
-- **Fixed:** gearing issues now stay at the front of auto-tune proposals when the telemetry says the car is gearing-limited.
-- **Fixed:** the selected setups folder now persists between app launches.
-- **Improved:** Desktop release updates refresh more reliably even with bundled Ollama files in use.
-
 ### 1.1.0 — Configurable setups directory
 
 - **New:** GUI "Setups folder" button to pick a custom Assetto Corsa setups root
@@ -235,6 +229,9 @@ clamped to the car's real min/max/step and hallucinated parameters are dropped.
   variable for headless or scripted usage.
 - Setups discovery, car detection, and save targets now respect the chosen folder.
 - Desktop builds auto-refresh during rebuild, so the GUI stays current.
+- Gearing issues stay at the front of auto-tune proposals when telemetry shows the car is gearing-limited.
+- The selected setups folder persists between app launches.
+- Desktop release updates refresh more reliably even with bundled Ollama files in use.
 
 ### 1.0.0 — Initial release
 

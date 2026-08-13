@@ -411,7 +411,7 @@ class AutoTuneApp:
             diag = diagnose_autotune(report, verdict if self.last_change else None,
                                      self.setup, self.manifest, self.engine,
                                      self.last_change, segment_context=seg.worst_summary(),
-                                     full_pass=self.full_var.get())
+                                     full_pass=self.full_var.get(), track_id=self.track)
             self.root.after(0, self._show, report, verdict, seg, diag)
         except Exception as exc:  # noqa: BLE001
             self.root.after(0, self._error, exc)

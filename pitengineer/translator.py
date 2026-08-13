@@ -101,6 +101,7 @@ def diagnose(
     setup: Setup,
     manifest: CarManifest,
     engine: Engine | None = None,
+    track_id: str = '',
 ) -> Diagnosis:
     """Ask the AI engine for changes, then validate every one against the manifest.
 
@@ -123,8 +124,9 @@ def diagnose(
         "JSON object (diagnosis + changes)."
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"Driver complaint:\n\"{complaint}\"\n\n"
         f"Vehicle-dynamics grounding (symptom -> likely levers):\n{grounding}\n\n"
         f"Current setup and legal ranges (index space):\n{setup_context}\n\n"
@@ -144,6 +146,7 @@ def diagnose_autotune(
     last_change: dict[str, tuple[int, int]] | None = None,
     segment_context: str = "",
     full_pass: bool = False,
+    track_id: str = '',
 ) -> Diagnosis:
     """The auto-tune brain: one iteration of the loop.
 
@@ -209,10 +212,10 @@ def diagnose_autotune(
     )
     if full_pass:
         system = (
-            "You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
+            f"You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
             "PASS for one driver, using all the measured telemetry (balance, "
             "camber, tyre temps/pressures, gearing, aero, suspension/kerbs, "
-            "braking, differential, track character, and where time is lost on "
+            "braking, differential, {track_id} track character, and where time is lost on "
             "the lap). Produce a full, well-rounded setup in ONE go: propose a "
             "change for EVERY area the data shows needs improving - typically 6 "
             "to 12 changes spread across multiple systems (e.g. camber AND "
@@ -223,8 +226,8 @@ def diagnose_autotune(
         )
     else:
         system = (
-            "You are an expert Assetto Corsa race engineer running an iterative "
-            "auto-tune session for one driver. Each stint you get the car's "
+            f"You are an expert Assetto Corsa race engineer running an iterative "
+            "auto-tune session for one driver on {track_id}. Each stint you get the car's "
             "measured behaviour, the driver's style, and whether your LAST change "
             "helped. Work ONE careful step at a time. Prioritise the change that "
             "gains the most LAP TIME - weigh ALL levers: gearing (rev-limiter / "
@@ -248,8 +251,9 @@ def diagnose_autotune(
         if segment_context else ""
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"{priority_block}"
         f"{segment_block}"
         f"{last_change_text}\n\n"
@@ -601,6 +605,7 @@ def diagnose_from_telemetry(
     setup: Setup,
     manifest: CarManifest,
     engine: Engine | None = None,
+    track_id: str = '',
 ) -> Diagnosis:
     """Diagnose from captured driving telemetry instead of a typed complaint.
 
@@ -624,8 +629,9 @@ def diagnose_from_telemetry(
         "object (diagnosis + changes)."
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"Telemetry captured from the driver's laps:\n{summary.describe()}\n\n"
         f"Vehicle-dynamics grounding (symptom -> likely levers):\n{grounding}\n\n"
         f"Current setup and legal ranges (index space):\n{setup_context}\n\n"

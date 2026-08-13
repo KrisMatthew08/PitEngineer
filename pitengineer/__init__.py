@@ -4,4 +4,4 @@ Describe what the car feels wrong in plain language; get back validated,
 in-range setup changes with explanations, and apply them to the .ini.
 """
 
-__version__ = "1.1.1"
+__version__ = "1.0.0"

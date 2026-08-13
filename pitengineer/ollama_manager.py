@@ -23,7 +23,7 @@ from shutil import which
 HOST = "http://localhost:11434"
 
 # Small model shipped in the self-contained build (must match the bundled store).
-BUNDLED_MODEL = "llama3.2:3b"
+BUNDLED_MODEL = "qwen3:8b"
 
 
 def _resource_dir() -> Path:

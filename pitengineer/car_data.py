@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .manifest import CarManifest, Parameter
 from .setup_file import load_setup
+from .acd import read_setup_ini
 
 # Sections that aren't tunable vehicle parameters - skip them in the manifest.
 _SKIP_SECTIONS = {
@@ -154,28 +155,69 @@ def build_manifest_from_setups(
                 observed.setdefault(section, []).append(value)
 
     params: dict[str, Parameter] = {}
+    
+    # Try to get authoritative ranges from setup.ini
+    authoritative_setup = read_setup_ini(car_id)
+
     for section, values in observed.items():
         group = _group_for(section)
-        lo, hi = min(values), max(values)
-        if lo == hi:
-            # Only one value ever seen: open a window around it so the AI has
-            # room to move. Widen symmetrically. Camber/toe are stored as SIGNED
-            # real values (negative), so we must NOT floor at 0 for those - only
-            # index-style params (pressures, wing clicks) stay non-negative.
-            v = lo
-            base = _WIDEN_CAMBER if "CAMBER" in section.upper() else _SOFT_WIDEN
-            widen = max(base, round(abs(v) * _WIDEN_FRAC))
-            lo, hi = v - widen, v + widen
-            if v >= 0:
-                lo = max(0, lo)
-        if lo > hi:                       # never emit an inverted range
-            lo, hi = hi, lo
+        
+        # Check if we have authoritative bounds
+        auth_min, auth_max, auth_step = None, None, None
+        mapped_min, mapped_max = None, None
+        
+        if authoritative_setup and authoritative_setup.has_section(section):
+            try:
+                auth_min = float(authoritative_setup.get(section, 'MIN'))
+                auth_max = float(authoritative_setup.get(section, 'MAX'))
+                auth_step = float(authoritative_setup.get(section, 'STEP', fallback=1))
+                
+                # We need to map the physics bounds from setup.ini to the integer space
+                # used by the driver setup .ini files (which could be index, value, or scaled value)
+                obs_min, obs_max = min(values), max(values)
+                S = int(round((auth_max - auth_min) / auth_step)) if auth_step else 0
+                
+                # Heuristic mapping
+                if auth_min <= obs_min and obs_max <= auth_max + 1:
+                    mapped_min, mapped_max = int(auth_min), int(auth_max)
+                elif auth_min * 10 <= obs_min and obs_max <= auth_max * 10 + 1:
+                    mapped_min, mapped_max = int(auth_min * 10), int(auth_max * 10)
+                elif auth_min * 100 <= obs_min and obs_max <= auth_max * 100 + 1:
+                    mapped_min, mapped_max = int(auth_min * 100), int(auth_max * 100)
+                elif 0 <= obs_min and obs_max <= S + 1:
+                    mapped_min, mapped_max = 0, S
+                else:
+                    # If we can't figure out the mapping, we fall back to widened observed bounds
+                    pass
+            except (ValueError, TypeError):
+                pass
+        
+        if mapped_min is not None and mapped_max is not None:
+            lo, hi = mapped_min, mapped_max
+            step = _step_from(values) # Authoritative step is already baked into the index mapping
+        else:
+            lo, hi = min(values), max(values)
+            if lo == hi:
+                # Only one value ever seen: open a window around it so the AI has
+                # room to move. Widen symmetrically. Camber/toe are stored as SIGNED
+                # real values (negative), so we must NOT floor at 0 for those - only
+                # index-style params (pressures, wing clicks) stay non-negative.
+                v = lo
+                base = _WIDEN_CAMBER if "CAMBER" in section.upper() else _SOFT_WIDEN
+                widen = max(base, round(abs(v) * _WIDEN_FRAC))
+                lo, hi = v - widen, v + widen
+                if v >= 0:
+                    lo = max(0, lo)
+            if lo > hi:                       # never emit an inverted range
+                lo, hi = hi, lo
+            step = _step_from(values)
+
         params[section] = Parameter(
             name=section,
             label=_label_for(section),
             min=lo,
             max=hi,
-            step=_step_from(values),
+            step=step,
             group=group,
         )
 
