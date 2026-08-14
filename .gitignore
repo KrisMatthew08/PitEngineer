@@ -16,6 +16,9 @@ dist/
 *.spec
 *.exe
 
+# self-contained build staging (bundled Ollama + model)
+build_staging/
+
 # runtime data written by the app
 history/
 

@@ -101,6 +101,7 @@ def diagnose(
     setup: Setup,
     manifest: CarManifest,
     engine: Engine | None = None,
+    track_id: str = '',
 ) -> Diagnosis:
     """Ask the AI engine for changes, then validate every one against the manifest.
 
@@ -123,8 +124,9 @@ def diagnose(
         "JSON object (diagnosis + changes)."
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"Driver complaint:\n\"{complaint}\"\n\n"
         f"Vehicle-dynamics grounding (symptom -> likely levers):\n{grounding}\n\n"
         f"Current setup and legal ranges (index space):\n{setup_context}\n\n"
@@ -144,6 +146,7 @@ def diagnose_autotune(
     last_change: dict[str, tuple[int, int]] | None = None,
     segment_context: str = "",
     full_pass: bool = False,
+    track_id: str = '',
 ) -> Diagnosis:
     """The auto-tune brain: one iteration of the loop.
 
@@ -209,30 +212,31 @@ def diagnose_autotune(
     )
     if full_pass:
         system = (
-            "You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
-            "PASS for one driver, using all the measured telemetry (balance, "
-            "camber, tyre temps/pressures, gearing, aero, suspension/kerbs, "
-            "braking, differential, track character, and where time is lost on "
-            "the lap). Produce a full, well-rounded setup in ONE go: propose a "
-            "change for EVERY area the data shows needs improving - typically 6 "
-            "to 12 changes spread across multiple systems (e.g. camber AND "
-            "pressures AND gearing AND a damper/brake fix), each a sensible step. "
-            "Only leave an area alone if it is genuinely already good. Do not stop "
-            "at one or two changes - this is a comprehensive setup, not a single "
-            "tweak. " + _conventions
+            f"You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
+            f"PASS for one driver on the {track_id or 'current'} track, using all the measured "
+            f"telemetry (balance, camber, tyre temps/pressures, gearing, aero, "
+            f"suspension/kerbs, braking, differential, track character, and where "
+            f"time is lost on the lap). Produce a full, well-rounded setup in ONE "
+            f"go: propose a change for EVERY area the data shows needs improving - "
+            f"typically 6 to 12 changes spread across multiple systems (e.g. camber "
+            f"AND pressures AND gearing AND a damper/brake fix), each a sensible "
+            f"step. Only leave an area alone if it is genuinely already good. Do "
+            f"not stop at one or two changes - this is a comprehensive setup, not "
+            f"a single tweak. {_conventions}"
         )
     else:
         system = (
-            "You are an expert Assetto Corsa race engineer running an iterative "
-            "auto-tune session for one driver. Each stint you get the car's "
-            "measured behaviour, the driver's style, and whether your LAST change "
-            "helped. Work ONE careful step at a time. Prioritise the change that "
-            "gains the most LAP TIME - weigh ALL levers: gearing (rev-limiter / "
-            "under-revving) and aero/wings are often bigger gains than an "
-            "anti-roll bar tweak. Propose the 2-4 MOST impactful changes this "
-            "stint. If the last change did not help, reconsider or revert it. If "
-            "the car is fast and balanced and lap times have plateaued, return an "
-            "EMPTY changes list and state it is dialled in. " + _conventions
+            f"You are an expert Assetto Corsa race engineer running an iterative "
+            f"auto-tune session for one driver on the {track_id or 'current'} track. "
+            f"Each stint you get the car's measured behaviour, the driver's style, "
+            f"and whether your LAST change helped. Work ONE careful step at a time. "
+            f"Prioritise the change that gains the most LAP TIME - weigh ALL levers: "
+            f"gearing (rev-limiter / under-revving) and aero/wings are often bigger "
+            f"gains than an anti-roll bar tweak. Propose the 2-4 MOST impactful "
+            f"changes this stint. If the last change did not help, reconsider or "
+            f"revert it. If the car is fast and balanced and lap times have "
+            f"plateaued, return an EMPTY changes list and state it is dialled in. "
+            f"{_conventions}"
         )
 
     # If code detected a clear gearing problem, force it to the top so the model
@@ -248,8 +252,9 @@ def diagnose_autotune(
         if segment_context else ""
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"{priority_block}"
         f"{segment_block}"
         f"{last_change_text}\n\n"
@@ -262,12 +267,28 @@ def diagnose_autotune(
         + ("Do the COMPLETE setup pass now: propose a change for every area above "
            "that needs improving (aim for 6-12 changes across multiple systems)."
            if full_pass else
-           "Decide the next step: either propose the next change(s), or return an "
-           "empty changes list if it's dialled in.")
+           "Propose 2-4 CONCRETE changes this stint. Do NOT focus on just one "
+           "system - address balance (ARBs, camber), tyres (pressures), AND any "
+           "gearing or aero issue the data shows. Be specific with the index numbers.")
     )
 
     result = engine.propose(system, user, CHANGES_SCHEMA)
     diag = _validate(result, setup, manifest)
+
+    # If telemetry says gearing is the limiting issue and the car exposes a
+    # gear lever, force a gear-related step to the front of the list instead of
+    # letting the model bury it behind balance tweaks.
+    if report.gearing.issue and can_adjust_gears:
+        gear_diag = _fallback_change(report, setup, manifest, report.gearing.issue)
+        if gear_diag.changes:
+            merged: list[Change] = []
+            seen: set[str] = set()
+            for change in gear_diag.changes + diag.changes:
+                if change.section in seen:
+                    continue
+                merged.append(change)
+                seen.add(change.section)
+            diag = Diagnosis(text=diag.text or gear_diag.text, changes=merged)
 
     # Guard against a false "dialled in": if the model returns no changes but the
     # telemetry shows a clear, unresolved problem, don't accept it - re-prompt
@@ -359,6 +380,13 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         return True
 
     def any_of(sections, direction, reason, **kw):
+        """Try each section in order, apply the FIRST one that actually moves."""
+        for sec in sections:
+            if change(sec, direction, reason, **kw):
+                return  # first success is enough
+
+    def all_of(sections, direction, reason, **kw):
+        """Apply to ALL sections (e.g. both sides of one axle)."""
         for sec in sections:
             change(sec, direction, reason, **kw)
 
@@ -377,6 +405,7 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
     aggressive = prof.aggression > 0.6 or prof.consistency < 0.4
     trailbraker = prof.trail_brake > 0.5
 
+<<<<<<< HEAD
     # 1) CAMBER - move decisively toward the grip window (direction from the
     #    dynamic-camber analysis; more negative = "add").
     if cam.front_advice == "add":
@@ -411,15 +440,67 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
 
     # 3) BALANCE - anti-roll bars (softer end = lower). Any lean acts; strength
     #    scales how far we move.
+=======
+    # 1) CAMBER - one axle at a time so it doesn't eat the whole budget.
+    if cam.front_advice == "add":
+        all_of(("CAMBER_LF", "CAMBER_RF"), "dec",
+               "add front camber - the loaded front was rolling onto its outer edge", frac=0.25)
+    elif cam.front_advice == "reduce":
+        all_of(("CAMBER_LF", "CAMBER_RF"), "inc",
+               "reduce front camber - it was riding the inner edge", frac=0.25)
+    if cam.rear_advice == "add":
+        all_of(("CAMBER_LR", "CAMBER_RR"), "dec",
+               "add rear camber for more rear grip under load", frac=0.25)
+    elif cam.rear_advice == "reduce":
+        all_of(("CAMBER_LR", "CAMBER_RR"), "inc",
+               "reduce rear camber - too much under load", frac=0.25)
+
+    # 2) TYRE PRESSURES - toward the ~26-28 psi hot window (measured).
+    #    The cold-setup index controls starting pressure. Each cold index unit
+    #    maps to roughly 1-2 psi hot, so we step 1-2 ticks toward the window.
+    if pr.front_psi > 5:
+        if pr.front_psi > PRESSURE_HOT_IDEAL_HI:
+            all_of(("PRESSURE_LF", "PRESSURE_RF"), "dec",
+                   f"front hot pressure high ({pr.front_psi:.1f} psi) - lower starting pressure",
+                   frac=0.15, max_steps=2)
+        elif pr.front_psi < PRESSURE_HOT_IDEAL_LO:
+            all_of(("PRESSURE_LF", "PRESSURE_RF"), "inc",
+                   f"front hot pressure low ({pr.front_psi:.1f} psi) - raise starting pressure toward ~27 psi hot",
+                   frac=0.15, max_steps=2)
+    if pr.rear_psi > 5:
+        if pr.rear_psi > PRESSURE_HOT_IDEAL_HI:
+            all_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "dec",
+                   f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower starting pressure",
+                   frac=0.15, max_steps=2)
+        elif pr.rear_psi < PRESSURE_HOT_IDEAL_LO:
+            all_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "inc",
+                   f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise starting pressure toward ~27 psi hot",
+                   frac=0.15, max_steps=2)
+
+    # 3) BALANCE - anti-roll bars (softer end = lower index).
     bal_frac = 0.35 if strong else 0.2
     if lean_us:
         any_of(("ARB_FRONT", "ARB_F"), "dec",
                "soften the front anti-roll bar to cut understeer (more front grip in roll)", frac=bal_frac)
+        # Also try softening front springs for more mechanical front grip
+        any_of(("SPRING_RATE_LF", "SPRING_RATE_RF"), "dec",
+               "softer front spring to add front grip through slow corners", frac=0.2)
     elif lean_os:
         any_of(("ARB_REAR", "ARB_R"), "dec",
                "soften the rear anti-roll bar to cut oversteer (more rear grip in roll)", frac=bal_frac)
+        # Also try softening rear springs for more mechanical rear grip
+        any_of(("SPRING_RATE_LR", "SPRING_RATE_RR"), "dec",
+               "softer rear spring to add rear grip and stability", frac=0.2)
 
-    # 4) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
+    # 4) TOE - rear toe-in adds straight-line stability and reduces oversteer tendency.
+    if lean_os and strong:
+        any_of(("TOE_OUT_LR", "TOE_OUT_RR"), "dec",
+               "more rear toe-in for stability - reduces oversteer tendency on power", frac=0.25)
+    elif lean_us and strong:
+        any_of(("TOE_OUT_LF", "TOE_OUT_RF"), "inc",
+               "less front toe-in for more front turn-in response", frac=0.25)
+
+    # 5) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
     if b.front_lock:
         any_of(("FRONT_BIAS", "BRAKE_BIAS"), "dec",
                "fronts lock under braking - shift brake bias rearward", frac=0.2, max_steps=4)
@@ -517,10 +598,31 @@ def _fallback_change(report, setup: Setup, manifest: CarManifest,
     s = report.summary
     candidates: list[tuple[str, str]] = []
 
-    # Gearing issue but no gear params -> trim wing for straight-line speed.
-    if report.gearing.issue and not _has_gear_params(manifest):
-        candidates += [(w, "dec") for w in
-                       ("WING_2", "WING_1", "WING_REAR", "WING_9", "WING_3", "WING_10")]
+    # Gearing issue: propose gear change if available, else trim wing.
+    if report.gearing.issue:
+        if _has_gear_params(manifest):
+            # Gears too short -> longer ratios (increase final drive / gear ratios)
+            # Gears too tall -> shorter ratios (decrease final drive / gear ratios)
+            dirn = "inc" if "short" in report.gearing.issue else "dec"
+            gear_names = [
+                name for name in manifest.adjustable_names()
+                if any(h in name.upper() for h in _GEAR_HINTS)
+            ]
+            priority = [
+                "FINAL_GEAR_RATIO", "FINAL_DRIVE", "GEARSET",
+                "GEAR_6", "GEAR_5", "GEAR_4", "GEAR_3", "GEAR_2", "GEAR_1",
+            ] if report.gearing.issue == "gears_too_short" else [
+                "GEAR_1", "GEAR_2", "GEAR_3", "GEAR_4", "GEAR_5", "GEAR_6",
+                "GEARSET", "FINAL_DRIVE", "FINAL_GEAR_RATIO",
+            ]
+            ordered = [name for name in priority if name in gear_names]
+            if not ordered:
+                ordered = gear_names
+            candidates += [(g, dirn) for g in ordered]
+        else:
+            # No gear params -> trim wing for straight-line speed instead
+            candidates += [(w, "dec") for w in
+                           ("WING_2", "WING_1", "WING_REAR", "WING_9", "WING_3", "WING_10")]
     if s.tendency == "oversteer":
         candidates += [("ARB_REAR", "dec"), ("ARB_R", "dec"),
                        ("PRESSURE_RR", "dec"), ("PRESSURE_RL", "dec"), ("PRESSURE_LR", "dec")]
@@ -565,6 +667,7 @@ def diagnose_from_telemetry(
     setup: Setup,
     manifest: CarManifest,
     engine: Engine | None = None,
+    track_id: str = '',
 ) -> Diagnosis:
     """Diagnose from captured driving telemetry instead of a typed complaint.
 
@@ -588,8 +691,9 @@ def diagnose_from_telemetry(
         "object (diagnosis + changes)."
     )
 
+    track_str = f"\nTrack: {track_id}" if track_id else ""
     user = (
-        f"Car: {manifest.display_name}\n\n"
+        f"Car: {manifest.display_name}{track_str}\n\n"
         f"Telemetry captured from the driver's laps:\n{summary.describe()}\n\n"
         f"Vehicle-dynamics grounding (symptom -> likely levers):\n{grounding}\n\n"
         f"Current setup and legal ranges (index space):\n{setup_context}\n\n"

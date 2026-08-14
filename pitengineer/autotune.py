@@ -57,9 +57,11 @@ def _capture_stint() -> "StintRecorder | None":
 
 
 def run(setup_path: str, manifest: CarManifest, engine: Engine,
-        car: str, track: str, full_pass: bool = False) -> int:
+        car: str, track: str, full_pass: bool = False,
+        setups_dir: str | Path | None = None) -> int:
     setup = load_setup(setup_path)
     memory = SessionMemory()
+    setups_dir = Path(setups_dir).expanduser() if setups_dir else None
 
     print("=" * 62)
     print(f" AUTO-TUNE  |  {manifest.display_name}  @  {track}")
@@ -139,7 +141,7 @@ def run(setup_path: str, manifest: CarManifest, engine: Engine,
         ans = _prompt("Apply these changes and continue? [Y/n] ").lower()
         if ans in ("", "y", "yes"):
             changes = {c.section: c.proposed_index for c in diag.changes}
-            target = writable_target(setup_path)
+            target = track_setup_target(car, track, setups_dir) or writable_target(setup_path)
             out = None if str(target) == str(setup_path) else target
             written = write_setup(setup, changes, out_path=out, backup=True)
             last_change = {c.section: (c.current_index, c.proposed_index) for c in diag.changes}
@@ -174,6 +176,11 @@ def main() -> int:
     parser.add_argument("--track", default=None, help="Track id (auto-detected from AC if omitted)")
     parser.add_argument("--engine", default="ollama", choices=["ollama", "claude"])
     parser.add_argument("--model", default=None, help="Model override")
+    parser.add_argument(
+        "--setups-dir",
+        default=None,
+        help="Root Assetto Corsa setups folder (defaults to Documents/Assetto Corsa/setups)",
+    )
     parser.add_argument("--full", action="store_true",
                         help="Full setup pass: propose a complete setup at once "
                              "(vs the default iterative one-change-per-stint)")
@@ -194,13 +201,15 @@ def main() -> int:
         print("Could not determine the car. Pass --car <id>.", file=sys.stderr)
         return 1
 
+    setups_dir = Path(args.setups_dir).expanduser() if args.setups_dir else None
+
     try:
-        manifest = build_manifest_from_setups(car, display_name=car)
+        manifest = build_manifest_from_setups(car, setups_dir, display_name=car)
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    setup_path = args.setup or (find_current_setup(car, track) or "")
+    setup_path = args.setup or (find_current_setup(car, track, setups_dir) or "")
     if not setup_path or not Path(setup_path).exists():
         print(
             f"Could not find a setup file for {car} / {track}. "
@@ -210,7 +219,8 @@ def main() -> int:
         return 1
 
     engine = make_engine(args.engine, args.model)
-    return run(str(setup_path), manifest, engine, car, track, full_pass=args.full)
+    return run(str(setup_path), manifest, engine, car, track, full_pass=args.full,
+               setups_dir=setups_dir)
 
 
 if __name__ == "__main__":

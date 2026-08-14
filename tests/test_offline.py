@@ -11,8 +11,11 @@ changes), and the safe round-trip write all work. No API key required.
 from __future__ import annotations
 
 import shutil
+import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
+from pitengineer.car_data import configured_setups_dir, track_setup_target
 from pitengineer.manifest import load_manifest
 from pitengineer.setup_file import load_setup, write_setup
 from pitengineer.translator import _validate
@@ -23,6 +26,13 @@ MANIFEST = ROOT / "data" / "manifests" / "generic_gt3.json"
 
 
 def main() -> int:
+    with TemporaryDirectory() as tmpdir:
+        custom = Path(tmpdir) / "OneDrive" / "AC" / "setups"
+        os.environ["PITENGINEER_SETUPS_DIR"] = str(custom)
+        assert configured_setups_dir() == custom
+        assert track_setup_target("car_x", "track_y") == custom / "car_x" / "track_y" / "pitengineer.ini"
+        print("Custom setups-root resolution OK")
+
     setup = load_setup(SAMPLE)
     manifest = load_manifest(MANIFEST)
     print(f"Loaded {len(setup.values)} sections, {len(manifest.parameters)} adjustable params")

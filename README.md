@@ -45,19 +45,28 @@ and lap times — so its advice is grounded in what your car actually did:
 
 ### Option A — the app (recommended)
 
-1. Install [Ollama](https://ollama.com) and pull the model:
+1. Download and unzip the latest release, or build it:
+   ```
+   python build_standalone.py
+   ```
+   This produces a self-contained folder with Ollama bundled in.
+
+2. Pull the AI model (Ollama will download ~2GB):
    ```
    ollama pull qwen3:8b
    ```
-2. Get PitEngineer:
-   - **Packaged:** run `dist/PitEngineer.exe` (build it with
-     `pip install pyinstaller && python build_exe.py`), or
-   - **From source:** `pip install -r requirements.txt` then
-     `python PitEngineer.py`
-3. Start Assetto Corsa, get on track, and in PitEngineer press **Detect car**.
-4. Press **Start stint**, drive a few laps, press **Stop & analyze**.
-5. Read the debrief, review the proposed change, press **Apply change & continue**.
-6. **Reload the setup in the pits** (re-enter the garage / re-select the setup)
+   Or use the bundled Ollama that starts automatically when you launch PitEngineer.
+
+3. *(Optional)* If your Assetto Corsa setups live outside the default Documents
+   folder (e.g., OneDrive):
+   - Click **Setups folder** (top-right button next to Detect car)
+   - Browse to your custom folder and confirm
+   - The app will show the selected path and reset for re-detection
+
+4. Start Assetto Corsa, get on track, and in PitEngineer press **Detect car**.
+5. Press **Start stint**, drive a few laps, press **Stop & analyze**.
+6. Read the debrief, review the proposed change, press **Apply change & continue**.
+7. **Reload the setup in the pits** (re-enter the garage / re-select the setup)
    so AC applies it, then drive the next stint. Repeat until it's dialled in.
 
 ### Option B — the command line
@@ -65,7 +74,89 @@ and lap times — so its advice is grounded in what your car actually did:
 ```
 python -m pitengineer.autotune      # auto-detects car, track, and setup
 ```
+
+This requires:
+- **Ollama installed locally** ([download](https://ollama.com))
+- Model pulled: `ollama pull qwen3:8b`
+- Dependencies: `pip install -r requirements.txt`
+
 Same loop, in a terminal. Drive → press Enter to stop → debrief → `Y` to apply.
+
+---
+
+## Using a custom setups directory
+
+If your Assetto Corsa setups live outside the default `Documents/Assetto Corsa/setups`
+folder (e.g., redirected to OneDrive, network drive, or custom location), use one
+of these methods:
+
+### Method 1 — GUI button (easiest)
+
+1. Launch PitEngineer
+2. Click **Setups folder** button (top-right, next to Detect car)
+3. Browse to your custom Assetto Corsa setups folder and confirm
+4. The path will show in the top bar
+5. Click **Detect car** to scan your setups from the new location
+
+### Method 2 — Command line argument
+
+```
+python -m pitengineer.autotune --setups-dir "D:\OneDrive\Documents\Assetto Corsa\setups"
+```
+
+Or with the GUI:
+```
+python -m pitengineer.gui --setups-dir "D:\OneDrive\Documents\Assetto Corsa\setups"
+```
+
+### Method 3 — Environment variable (persistent)
+
+Set once, use everywhere. On Windows:
+
+**PowerShell:**
+```powershell
+$env:PITENGINEER_SETUPS_DIR = "D:\OneDrive\Documents\Assetto Corsa\setups"
+python -m pitengineer.autotune
+```
+
+**Command Prompt:**
+```cmd
+set PITENGINEER_SETUPS_DIR=D:\OneDrive\Documents\Assetto Corsa\setups
+python -m pitengineer.autotune
+```
+
+**Persistent (all future sessions):**
+```powershell
+[Environment]::SetEnvironmentVariable("PITENGINEER_SETUPS_DIR", "D:\OneDrive\Documents\Assetto Corsa\setups", "User")
+```
+Then restart your terminal and PitEngineer will always use that folder.
+
+---
+
+## Step-by-step workflow
+
+1. **Open Assetto Corsa** and start a session (get on track)
+2. **Open PitEngineer** (the app)
+3. **Click "Detect car"** (top-right button) — it will scan your setups and learn the car's parameters
+4. If your setups are in a custom folder (not default Documents):
+   - Click **"Setups folder"** button first
+   - Browse and select your custom folder
+   - Then click **"Detect car"** again
+5. **Click "● Start stint"** (red button, bottom-left)
+6. **Drive several laps** in Assetto Corsa (the app is recording your telemetry)
+7. **Click "■ Stop & analyze"** when you finish
+8. **Wait 30–60 seconds** for the AI to process your data
+9. **Read the DETAILS log** (debrief of what the car did)
+10. **Review the proposed change** in the PROPOSED CHANGE card (upper-center)
+11. **Click "Apply change & continue"** (red button) if you agree
+12. **Go back to Assetto Corsa** and reload the setup in the pits:
+    - Enter the garage / pause
+    - Go to Setup menu
+    - Load the setup it created (usually `pitengineer.ini`)
+13. **Exit the pits and drive another stint**
+14. **Repeat steps 5–13** until the car feels dialled in (or gains plateau)
+
+---
 
 ### Best quality (optional): Claude instead of local
 
@@ -128,11 +219,37 @@ clamped to the car's real min/max/step and hallucinated parameters are dropped.
 
 ---
 
+## Changelog
+
+### 1.1.0 — Configurable setups directory
+
+- **New:** GUI "Setups folder" button to pick a custom Assetto Corsa setups root
+  at runtime (solves OneDrive/redirected Documents issues).
+- **New:** `--setups-dir` CLI option and `PITENGINEER_SETUPS_DIR` environment
+  variable for headless or scripted usage.
+- Setups discovery, car detection, and save targets now respect the chosen folder.
+- Desktop builds auto-refresh during rebuild, so the GUI stays current.
+- Gearing issues stay at the front of auto-tune proposals when telemetry shows the car is gearing-limited.
+- The selected setups folder persists between app launches.
+- Desktop release updates refresh more reliably even with bundled Ollama files in use.
+
+### 1.0.0 — Initial release
+
+- Auto-tune loop with live telemetry analysis (telemetry → diagnosis → setup change).
+- AI-driven setup optimization (Ollama or Claude backend).
+- Iterative one-change-per-stint or full-setup-pass modes.
+- Safe, validated changes (clamped to car's legal ranges).
+- Desktop app + CLI + standalone offline bundle.
+
+---
+
 ## Requirements & notes
 
 - **Windows + Assetto Corsa** (the telemetry uses AC's Windows Shared Memory).
-- **Ollama** with a capable model (`qwen3:8b` recommended). Diagnosis takes
-  ~30–60s on CPU; that's fine between stints.
+- **Ollama** — bundled in the packaged release (auto-starts on launch). If running
+  from source, install [Ollama](https://ollama.com) separately and pull a model
+  (`ollama pull qwen3:8b`, ~2GB).
+- Diagnosis takes ~30–60s on CPU; that's fine between stints.
 - AC can't hot-swap a setup mid-lap — you reload it in the pits, so the loop is
   a between-stints debrief, not a live overlay.
 - A faster stint can be *you* driving better, not the setup — PitEngineer uses

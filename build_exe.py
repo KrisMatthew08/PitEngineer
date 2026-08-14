@@ -15,8 +15,14 @@ Notes:
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+
+DESKTOP_TARGET = Path.home() / "Desktop" / "PitEngineer.exe"
 
 
 def main() -> int:
@@ -29,7 +35,23 @@ def main() -> int:
         "PitEngineer.py",
     ]
     print("Running:", " ".join(cmd))
-    return subprocess.call(cmd)
+      result = subprocess.call(cmd)
+      if result != 0:
+        return result
+
+      dist = Path("dist") / "PitEngineer.exe"
+      if not dist.exists():
+        raise SystemExit(f"Build finished but executable was not found: {dist}")
+
+      if DESKTOP_TARGET.exists():
+        if DESKTOP_TARGET.is_dir():
+          shutil.rmtree(DESKTOP_TARGET)
+        else:
+          DESKTOP_TARGET.unlink()
+      shutil.copy2(dist, DESKTOP_TARGET)
+      if os.name == "nt":
+        print(f"Copied build to: {DESKTOP_TARGET}")
+      return 0
 
 
 if __name__ == "__main__":

@@ -18,11 +18,13 @@ it never proposes a value the driver hasn't already used somewhere.)
 from __future__ import annotations
 
 import json
+import os
 from math import gcd
 from pathlib import Path
 
 from .manifest import CarManifest, Parameter
 from .setup_file import load_setup
+from .acd import read_setup_ini
 
 # Sections that aren't tunable vehicle parameters - skip them in the manifest.
 _SKIP_SECTIONS = {
@@ -40,6 +42,27 @@ _SKIP_PREFIXES = ("CUSTOM_SCRIPT_ITEM", "__")
 _SOFT_WIDEN = 4
 _WIDEN_CAMBER = 8
 _WIDEN_FRAC = 0.12
+# Physics-aware widening fractions for parameters with known typical AC ranges.
+# When a car's data.acd is encrypted and we only have a narrow observed range,
+# we widen symmetrically by this fraction of the observed centre value so the
+# AI has meaningful room to move. AC clamps any out-of-range value on load.
+_WIDEN_BY_TYPE = [
+    # (name_fragment,          widen_frac, floor_at_zero)
+    ("ARB",                    0.8,        True),
+    ("SPRING_RATE",            0.5,        True),
+    ("SPRING",                 0.5,        True),
+    ("DAMP",                   0.6,        True),
+    ("BUMPSTOP",               0.6,        True),
+    ("BUMP_STOP",              0.6,        True),
+    ("PRESSURE",               0.25,       True),
+    ("CAMBER",                 0.0,        False),  # handled separately
+    ("TOE",                    0.5,        False),
+    ("ROD_LENGTH",             0.4,        False),
+    ("DIFF",                   0.5,        True),
+    ("WING",                   0.5,        True),
+    ("BRAKE",                  0.3,        True),
+    ("GEAR",                   0.3,        True),
+]
 
 
 def default_setups_dir() -> Path:
@@ -47,9 +70,21 @@ def default_setups_dir() -> Path:
     return Path.home() / "Documents" / "Assetto Corsa" / "setups"
 
 
+def configured_setups_dir(value: str | Path | None = None) -> Path:
+    """User-configured setups root, falling back to the Windows default.
+
+    The environment variable lets users point PitEngineer at redirected
+    Documents folders such as OneDrive-backed AC setups.
+    """
+    raw = value if value is not None else os.environ.get("PITENGINEER_SETUPS_DIR")
+    if raw:
+        return Path(raw).expanduser()
+    return default_setups_dir()
+
+
 def list_cars(setups_dir: Path | None = None) -> list[str]:
     """Car ids the driver has setups for."""
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     if not setups_dir.exists():
         return []
     return sorted(p.name for p in setups_dir.iterdir() if p.is_dir())
@@ -59,7 +94,7 @@ def discover_setup_files(car_id: str, setups_dir: Path | None = None) -> list[Pa
     """All .ini setup files for a car, across every track folder."""
     if not car_id or not car_id.strip():
         return []  # empty car id (e.g. AC not running) - never scan everything
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     car_dir = setups_dir / car_id
     if not car_dir.exists():
         return []
@@ -116,12 +151,41 @@ def _step_from(values: list[int]) -> int:
     return step or 1
 
 
+def _widen_for(section: str, v: int) -> tuple[int, int]:
+    """Return a widened (lo, hi) window for a single-valued parameter.
+
+    Uses physics-aware fractions for parameter types that have known AC ranges,
+    falling back to the legacy proportional heuristic for unknowns.
+    """
+    su = section.upper()
+    if "CAMBER" in su:
+        # Camber is negative (e.g. -30 = -3.0 deg); always widen generously.
+        widen = max(_WIDEN_CAMBER, round(abs(v) * 0.5))
+        return v - widen, v + widen
+
+    for fragment, frac, floor_zero in _WIDEN_BY_TYPE:
+        if fragment in su:
+            widen = max(_SOFT_WIDEN, round(abs(v) * frac))
+            lo, hi = v - widen, v + widen
+            if floor_zero:
+                lo = max(0, lo)
+            return lo, hi
+
+    # Generic fallback
+    widen = max(_SOFT_WIDEN, round(abs(v) * _WIDEN_FRAC))
+    lo, hi = v - widen, v + widen
+    if v >= 0:
+        lo = max(0, lo)
+    return lo, hi
+
+
 def build_manifest_from_setups(
     car_id: str,
     setups_dir: Path | None = None,
     display_name: str | None = None,
 ) -> CarManifest:
     """Scan a car's setups and derive a manifest (params + safe ranges)."""
+    setups_dir = setups_dir or configured_setups_dir()
     files = discover_setup_files(car_id, setups_dir)
     if not files:
         raise FileNotFoundError(
@@ -140,28 +204,66 @@ def build_manifest_from_setups(
                 observed.setdefault(section, []).append(value)
 
     params: dict[str, Parameter] = {}
+    
+    # Try to get authoritative ranges from setup.ini
+    authoritative_setup = read_setup_ini(car_id)
+
     for section, values in observed.items():
         group = _group_for(section)
-        lo, hi = min(values), max(values)
-        if lo == hi:
-            # Only one value ever seen: open a window around it so the AI has
-            # room to move. Widen symmetrically. Camber/toe are stored as SIGNED
-            # real values (negative), so we must NOT floor at 0 for those - only
-            # index-style params (pressures, wing clicks) stay non-negative.
-            v = lo
-            base = _WIDEN_CAMBER if "CAMBER" in section.upper() else _SOFT_WIDEN
-            widen = max(base, round(abs(v) * _WIDEN_FRAC))
-            lo, hi = v - widen, v + widen
-            if v >= 0:
-                lo = max(0, lo)
-        if lo > hi:                       # never emit an inverted range
-            lo, hi = hi, lo
+        # Check if we have authoritative bounds
+        auth_min, auth_max, auth_step = None, None, None
+        mapped_min, mapped_max = None, None
+        
+        if authoritative_setup and authoritative_setup.has_section(section):
+            try:
+                auth_min = float(authoritative_setup.get(section, 'MIN'))
+                auth_max = float(authoritative_setup.get(section, 'MAX'))
+                auth_step = float(authoritative_setup.get(section, 'STEP', fallback=1))
+                
+                # We need to map the physics bounds from setup.ini to the integer space
+                # used by the driver setup .ini files (which could be index, value, or scaled value)
+                obs_min, obs_max = min(values), max(values)
+                S = int(round((auth_max - auth_min) / auth_step)) if auth_step else 0
+                
+                # Heuristic mapping
+                if auth_min <= obs_min and obs_max <= auth_max + 1:
+                    mapped_min, mapped_max = int(auth_min), int(auth_max)
+                elif auth_min * 10 <= obs_min and obs_max <= auth_max * 10 + 1:
+                    mapped_min, mapped_max = int(auth_min * 10), int(auth_max * 10)
+                elif auth_min * 100 <= obs_min and obs_max <= auth_max * 100 + 1:
+                    mapped_min, mapped_max = int(auth_min * 100), int(auth_max * 100)
+                elif 0 <= obs_min and obs_max <= S + 1:
+                    mapped_min, mapped_max = 0, S
+                else:
+                    # If we can't figure out the mapping, we fall back to widened observed bounds
+                    pass
+            except (ValueError, TypeError):
+                pass
+        
+        if mapped_min is not None and mapped_max is not None:
+            lo, hi = mapped_min, mapped_max
+            step = _step_from(values)
+        else:
+            lo, hi = min(values), max(values)
+            span = hi - lo
+            # If the observed range is very narrow (the driver rarely changes
+            # this parameter), widen it using physics-aware heuristics so the
+            # AI always has room to move, regardless of how many setups exist.
+            v = (lo + hi) // 2
+            wlo, whi = _widen_for(section, v)
+            # Only widen outward — never shrink an observed range.
+            lo = min(lo, wlo)
+            hi = max(hi, whi)
+            if lo > hi:
+                lo, hi = hi, lo
+            step = _step_from(values)
+
         params[section] = Parameter(
             name=section,
             label=_label_for(section),
             min=lo,
             max=hi,
-            step=_step_from(values),
+            step=step,
             group=group,
         )
 
@@ -185,7 +287,7 @@ def find_current_setup(
     """
     if not car_id or not car_id.strip():
         return None
-    setups_dir = setups_dir or default_setups_dir()
+    setups_dir = setups_dir or configured_setups_dir()
     track_dir = setups_dir / car_id / track_id
     candidates: list[Path] = []
     if track_dir.exists():
@@ -213,7 +315,11 @@ def track_setup_target(
     """
     if not car_id or not car_id.strip() or not track_id or not track_id.strip():
         return None
+<<<<<<< HEAD
     setups_dir = setups_dir or default_setups_dir()
+=======
+    setups_dir = setups_dir or configured_setups_dir()
+>>>>>>> offline-standalone
     return setups_dir / car_id / track_id / name
 
 
