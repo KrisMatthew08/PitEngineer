@@ -299,7 +299,7 @@ class AutoTuneApp:
         self.busy.configure(text=text if on else "")
 
     def _set_tile(self, key: str, value: str, color: str = FG) -> None:
-        self.tiles[key].configure(text=value, fg=color)
+        self.tiles[key].configure(text=value, text_color=color)
 
     # ---------- AC polling ----------
     def _poll_ac(self) -> None:
