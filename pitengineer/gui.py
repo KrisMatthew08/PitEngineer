@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import customtkinter as ctk
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font as tkfont
@@ -73,12 +74,13 @@ def _save_setups_dir(value: Path) -> None:
 
 
 class AutoTuneApp:
-    def __init__(self, root: tk.Tk, engine_kind: str = "ollama",
+    def __init__(self, root: ctk.CTk, engine_kind: str = "ollama",
                  model: str | None = None,
                  setups_dir: str | Path | None = None) -> None:
         self.root = root
         root.title("PitEngineer — AI Race Engineer")
-        root.configure(bg=BG)
+        ctk.set_appearance_mode("dark")
+        root.configure(fg_color=BG)
         root.minsize(820, 720)
 
         self.setups_dir = Path(setups_dir).expanduser() if setups_dir else _load_saved_setups_dir()
@@ -114,26 +116,23 @@ class AutoTuneApp:
 
     # ---------- fonts ----------
     def _fonts(self) -> None:
-        self.f_title = tkfont.Font(family="Segoe UI Semibold", size=16)
-        self.f_sub = tkfont.Font(family="Segoe UI", size=10)
-        self.f_tile_val = tkfont.Font(family="Segoe UI", size=24, weight="bold")
-        self.f_tile_cap = tkfont.Font(family="Segoe UI Semibold", size=9)
-        self.f_h = tkfont.Font(family="Segoe UI Semibold", size=11)
-        self.f_body = tkfont.Font(family="Segoe UI", size=11)
-        self.f_change = tkfont.Font(family="Segoe UI Semibold", size=12)
-        self.f_btn = tkfont.Font(family="Segoe UI Semibold", size=11)
+        self.f_title = ctk.CTkFont(family="Segoe UI Semibold", size=16, weight="bold")
+        self.f_sub = ctk.CTkFont(family="Segoe UI", size=10)
+        self.f_tile_val = ctk.CTkFont(family="Segoe UI", size=24, weight="bold")
+        self.f_tile_cap = ctk.CTkFont(family="Segoe UI", size=10, weight="bold")
+        self.f_h = ctk.CTkFont(family="Segoe UI Semibold", size=11)
+        self.f_body = ctk.CTkFont(family="Segoe UI", size=11)
+        self.f_change = ctk.CTkFont(family="Segoe UI Semibold", size=12)
+        self.f_btn = ctk.CTkFont(family="Segoe UI Semibold", size=11)
 
     # ---------- widget helpers ----------
     def _panel(self, parent, **kw):
-        return tk.Frame(parent, bg=PANEL, highlightthickness=0, **kw)
+        return ctk.CTkFrame(parent, fg_color=PANEL, **kw)
 
     def _btn(self, parent, text, cmd, accent=True):
-        b = tk.Button(parent, text=text, command=cmd, font=self.f_btn,
-                      bg=ACCENT if accent else PANEL2, fg="white",
-                      activebackground="#b40500" if accent else "#2c3542",
-                      activeforeground="white", relief="flat", bd=0,
-                      padx=18, pady=9, cursor="hand2",
-                      disabledforeground=MUTED)
+        b = ctk.CTkButton(parent, text=text, command=cmd, font=self.f_btn,
+                      fg_color=ACCENT if accent else PANEL2, text_color="white",
+                      hover_color="#b40500" if accent else "#2c3542", cursor="hand2")
         return b
 
     def _setups_dir_text(self) -> str:
@@ -164,12 +163,12 @@ class AutoTuneApp:
         self.apply_btn.configure(state="disabled")
         self.stint_btn.configure(state="disabled", text="● Start stint")
         self.change_placeholder.destroy()
-        self.change_placeholder = tk.Label(
+        self.change_placeholder = ctk.CTkLabel(
             self.change_box,
             text="Pick a car again after changing the setups folder.",
             font=self.f_body,
-            bg=PANEL,
-            fg=MUTED,
+            fg_color=PANEL,
+            text_color=MUTED,
             anchor="w",
         )
         self.change_placeholder.pack(anchor="w")
@@ -181,21 +180,21 @@ class AutoTuneApp:
         pad = 14
 
         # Header
-        head = tk.Frame(self.root, bg=BG)
+        head = ctk.CTkFrame(self.root, fg_color=BG)
         head.pack(fill="x", padx=pad, pady=(pad, 6))
-        self.dot = tk.Label(head, text="●", font=("Segoe UI", 16), bg=BG, fg=BAD)
+        self.dot = ctk.CTkLabel(head, text="●", font=("Segoe UI", 16), fg_color=BG, text_color=BAD)
         self.dot.pack(side="left")
-        htext = tk.Frame(head, bg=BG)
+        htext = ctk.CTkFrame(head, fg_color=BG)
         htext.pack(side="left", padx=8)
-        self.title_lbl = tk.Label(htext, text="Waiting for Assetto Corsa…",
-                                  font=self.f_title, bg=BG, fg=FG, anchor="w")
+        self.title_lbl = ctk.CTkLabel(htext, text="Waiting for Assetto Corsa…",
+                                  font=self.f_title, fg_color=BG, text_color=FG, anchor="w")
         self.title_lbl.pack(anchor="w")
-        self.sub_lbl = tk.Label(htext,
+        self.sub_lbl = ctk.CTkLabel(htext,
                                  text=f"Engine: {self.engine.name}   ·   v{__version__}   ·   built {BUILD_DATE}",
-                                 font=self.f_sub, bg=BG, fg=MUTED, anchor="w")
+                                 font=self.f_sub, fg_color=BG, text_color=MUTED, anchor="w")
         self.sub_lbl.pack(anchor="w")
-        self.setups_lbl = tk.Label(htext, text=self._setups_dir_text(),
-                       font=self.f_sub, bg=BG, fg=MUTED, anchor="w",
+        self.setups_lbl = ctk.CTkLabel(htext, text=self._setups_dir_text(),
+                       font=self.f_sub, fg_color=BG, text_color=MUTED, anchor="w",
                        wraplength=560, justify="left")
         self.setups_lbl.pack(anchor="w")
         self.detect_btn = self._btn(head, "Detect car", self._detect, accent=False)
@@ -204,7 +203,7 @@ class AutoTuneApp:
         self.setups_btn.pack(side="right", padx=(0, 8))
 
         # Stat tiles
-        tiles = tk.Frame(self.root, bg=BG)
+        tiles = ctk.CTkFrame(self.root, fg_color=BG)
         tiles.pack(fill="x", padx=pad, pady=6)
         self.tiles = {}
         for i, (key, cap) in enumerate([("best", "BEST LAP"), ("median", "TYPICAL PACE"),
@@ -212,60 +211,44 @@ class AutoTuneApp:
             card = self._panel(tiles)
             card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
             tiles.columnconfigure(i, weight=1)
-            val = tk.Label(card, text="—", font=self.f_tile_val, bg=PANEL, fg=FG)
+            val = ctk.CTkLabel(card, text="—", font=self.f_tile_val, fg_color=PANEL, text_color=FG)
             val.pack(pady=(16, 2))
-            tk.Label(card, text=cap, font=self.f_tile_cap, bg=PANEL, fg=MUTED).pack(pady=(2, 12))
+            ctk.CTkLabel(card, text=cap, font=self.f_tile_cap, fg_color=PANEL, text_color=MUTED).pack(pady=(2, 12))
             self.tiles[key] = val
 
         # Info panel (balance / tyres / corner)
         info = self._panel(self.root)
         info.pack(fill="x", padx=pad, pady=6)
-        self.balance_lbl = tk.Label(info, text="Balance: —", font=self.f_body,
-                                    bg=PANEL, fg=FG, anchor="w", justify="left")
+        self.balance_lbl = ctk.CTkLabel(info, text="Balance: —", font=self.f_body,
+                                    fg_color=PANEL, text_color=FG, anchor="w", justify="left")
         self.balance_lbl.pack(fill="x", padx=16, pady=(16, 6))
-        self.tyres_lbl = tk.Label(info, text="Tyres: —", font=self.f_body,
-                                  bg=PANEL, fg=FG, anchor="w")
+        self.tyres_lbl = ctk.CTkLabel(info, text="Tyres: —", font=self.f_body,
+                                  fg_color=PANEL, text_color=FG, anchor="w")
         self.tyres_lbl.pack(fill="x", padx=16, pady=2)
-        self.corner_lbl = tk.Label(info, text="Time loss: —", font=self.f_body,
-                                   bg=PANEL, fg=WARN, anchor="w", justify="left",
+        self.corner_lbl = ctk.CTkLabel(info, text="Time loss: —", font=self.f_body,
+                                   fg_color=PANEL, text_color=WARN, anchor="w", justify="left",
                                    wraplength=760)
         self.corner_lbl.pack(fill="x", padx=16, pady=(6, 16))
 
         # Split container for Hero (left) and Details (right)
-        split_frame = tk.Frame(self.root, bg=BG)
+        split_frame = ctk.CTkFrame(self.root, fg_color=BG)
         split_frame.pack(fill="both", expand=True, padx=pad, pady=6)
 
         # Hero: proposed change card
         hero = self._panel(split_frame)
         hero.pack(side="left", fill="both", expand=True, padx=(0, 6))
-        bar = tk.Frame(hero, bg=ACCENT, height=3)
+        bar = ctk.CTkFrame(hero, fg_color=ACCENT, height=3)
         bar.pack(fill="x")
-        tk.Label(hero, text="PROPOSED CHANGE", font=self.f_h, bg=PANEL,
-                 fg=ACCENT).pack(anchor="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(hero, text="PROPOSED CHANGE", font=self.f_h, fg_color=PANEL,
+                 text_color=ACCENT).pack(anchor="w", padx=12, pady=(10, 4))
         
         # Scrollable change box
-        change_wrap = tk.Frame(hero, bg=PANEL)
-        change_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
-        change_canvas = tk.Canvas(change_wrap, bg=PANEL, bd=0, highlightthickness=0)
-        change_scrollbar = tk.Scrollbar(change_wrap, orient="vertical", command=change_canvas.yview)
-        self.change_box = tk.Frame(change_canvas, bg=PANEL)
-        self.change_box.bind("<Configure>", 
-            lambda e: change_canvas.configure(scrollregion=change_canvas.bbox("all")))
-        change_canvas.create_window((0, 0), window=self.change_box, anchor="nw")
-        change_canvas.configure(yscrollcommand=change_scrollbar.set)
+        self.change_box = ctk.CTkScrollableFrame(hero, fg_color=PANEL, corner_radius=0)
+        self.change_box.pack(fill="both", expand=True, padx=12, pady=(0, 6))
         
-        # Mouse wheel scrolling
-        def _on_mousewheel(event):
-            change_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        change_canvas.bind("<MouseWheel>", _on_mousewheel)
-        self.change_box.bind("<MouseWheel>", _on_mousewheel)
-        
-        change_canvas.pack(side="left", fill="both", expand=True)
-        change_scrollbar.pack(side="right", fill="y")
-        
-        self.change_placeholder = tk.Label(
+        self.change_placeholder = ctk.CTkLabel(
             self.change_box, text="Drive a stint and I'll propose a change here.",
-            font=self.f_body, bg=PANEL, fg=MUTED, anchor="w")
+            font=self.f_body, fg_color=PANEL, text_color=MUTED, anchor="w")
         self.change_placeholder.pack(anchor="w")
         self.apply_btn = self._btn(hero, "Apply change & continue", self._apply)
         self.apply_btn.configure(state="disabled")
@@ -274,32 +257,30 @@ class AutoTuneApp:
         # Detail log (full debrief text, scrollable)
         logwrap = self._panel(split_frame)
         logwrap.pack(side="right", fill="both", expand=True, padx=(6, 0))
-        tk.Label(logwrap, text="DETAILS", font=self.f_h, bg=PANEL,
-                 fg=MUTED).pack(anchor="w", padx=12, pady=(8, 0))
-        self.log = scrolledtext.ScrolledText(
-            logwrap, wrap="word", height=8, bg=PANEL, fg=MUTED, bd=0,
-            font=("Consolas", 10), insertbackground=FG, relief="flat")
+        ctk.CTkLabel(logwrap, text="DETAILS", font=self.f_h, fg_color=PANEL,
+                 text_color=MUTED).pack(anchor="w", padx=12, pady=(8, 0))
+        self.log = ctk.CTkTextbox(
+            logwrap, wrap="word", height=150, fg_color=PANEL, text_color=MUTED,
+            font=("Consolas", 10))
         self.log.pack(fill="both", expand=True, padx=10, pady=(2, 10))
         self.log.configure(state="disabled")
 
         # Bottom bar
-        bottom = tk.Frame(self.root, bg=BG)
+        bottom = ctk.CTkFrame(self.root, fg_color=BG)
         bottom.pack(fill="x", padx=pad, pady=(0, 6))
         self.stint_btn = self._btn(bottom, "● Start stint", self._toggle_stint)
         self.stint_btn.configure(state="disabled")
         self.stint_btn.pack(side="left")
         self.full_var = tk.BooleanVar(value=False)
-        self.full_chk = tk.Checkbutton(
-            bottom, text="Full setup pass (change everything)", variable=self.full_var,
-            font=self.f_sub, bg=BG, fg=MUTED, selectcolor=PANEL2,
-            activebackground=BG, activeforeground=FG, bd=0, highlightthickness=0,
-            cursor="hand2")
+        self.full_chk = ctk.CTkCheckBox(
+            bottom, text="Full setup pass (change everything)", variable=self.full_var, font=self.f_sub, fg_color=BG, text_color=MUTED, hover_color=PANEL2,
+            cursor="hand2", text_color_disabled=MUTED)
         self.full_chk.pack(side="left", padx=12)
-        self.busy = tk.Label(bottom, text="", font=self.f_sub, bg=BG, fg=ACCENT)
+        self.busy = ctk.CTkLabel(bottom, text="", font=self.f_sub, fg_color=BG, text_color=ACCENT)
         self.busy.pack(side="right")
 
-        self.statusbar = tk.Label(self.root, text="Start Assetto Corsa and get on track.",
-                                  font=self.f_sub, bg=PANEL2, fg=MUTED, anchor="w")
+        self.statusbar = ctk.CTkLabel(self.root, text="Start Assetto Corsa and get on track.",
+                                  font=self.f_sub, fg_color=PANEL2, text_color=MUTED, anchor="w")
         self.statusbar.pack(fill="x", side="bottom", ipady=3)
 
     # ---------- small ops ----------
@@ -323,7 +304,7 @@ class AutoTuneApp:
     # ---------- AC polling ----------
     def _poll_ac(self) -> None:
         status = session_status()
-        self.dot.configure(fg=DOT.get(status, MUTED))
+        self.dot.configure(text_color=DOT.get(status, MUTED))
         if self.car and self.manifest:
             self.title_lbl.configure(text=f"{self.manifest.display_name}  ·  {self.track}")
             self.sub_lbl.configure(
@@ -463,19 +444,19 @@ class AutoTuneApp:
             w.destroy()
         if diag.changes:
             for c_ in diag.changes:
-                row = tk.Frame(self.change_box, bg=PANEL)
+                row = ctk.CTkFrame(self.change_box, fg_color=PANEL)
                 row.pack(fill="x", pady=(0, 16))
                 
                 # Make the parameter name and values cleaner
-                param_name = tk.Label(row, text=f"{c_.label}", font=self.f_change, bg=PANEL, fg=FG)
+                param_name = ctk.CTkLabel(row, text=f"{c_.label}", font=self.f_change, fg_color=PANEL, text_color=FG)
                 param_name.pack(side="left", anchor="nw")
                 
-                arrow = tk.Label(row, text=f"  {c_.human_current(self.manifest)} → {c_.human_proposed(self.manifest)}", 
-                                 font=("Consolas", 11, "bold"), bg=PANEL, fg=GOOD)
+                arrow = ctk.CTkLabel(row, text=f"  {c_.human_current(self.manifest)} → {c_.human_proposed(self.manifest)}", 
+                                 font=("Consolas", 11, "bold"), fg_color=PANEL, text_color=GOOD)
                 arrow.pack(side="left", anchor="nw")
                 
-                reason_lbl = tk.Label(row, text=f"\n{c_.reason}  ({c_.confidence})",
-                                      font=self.f_body, bg=PANEL, fg=MUTED, anchor="w",
+                reason_lbl = ctk.CTkLabel(row, text=f"\n{c_.reason}  ({c_.confidence})",
+                                      font=self.f_body, fg_color=PANEL, text_color=MUTED, anchor="w",
                                       wraplength=740, justify="left")
                 reason_lbl.pack(side="left", fill="x", expand=True, anchor="w")
             self.pending = diag
@@ -485,8 +466,8 @@ class AutoTuneApp:
             from .translator import _clear_problem
             msg = (">> Dialled in for your driving." if _clear_problem(report, self.manifest) is None
                    else ">> Couldn't auto-fix this on this car — adjust manually, or use the Claude engine.")
-            tk.Label(self.change_box, text=msg, font=self.f_body, bg=PANEL,
-                     fg=MUTED, anchor="w").pack(anchor="w")
+            ctk.CTkLabel(self.change_box, text=msg, font=self.f_body, fg_color=PANEL,
+                     text_color=MUTED, anchor="w").pack(anchor="w")
             self.pending = None
             self._status("No change this stint — see details.")
 
@@ -524,9 +505,9 @@ class AutoTuneApp:
         for w in self.change_box.winfo_children():
             w.destroy()
         name = written.stem
-        tk.Label(self.change_box, text=f"✓ Applied. In the pits, open Setup and "
+        ctk.CTkLabel(self.change_box, text=f"✓ Applied. In the pits, open Setup and "
                  f"LOAD the '{name}' setup (no game restart needed), then drive "
-                 "the next stint.", font=self.f_body, bg=PANEL, fg=GOOD,
+                 "the next stint.", font=self.f_body, fg_color=PANEL, text_color=GOOD,
                  anchor="w", wraplength=740, justify="left").pack(anchor="w")
         self._status(f"Applied to '{name}'. Load it in the pits, then Start stint.")
 
@@ -551,7 +532,7 @@ def main() -> int:
     model = args.model
     if model is None and args.engine == "ollama":
         model = bundled_model_name() or BUNDLED_MODEL
-    root = tk.Tk()
+    root = ctk.CTk()
     AutoTuneApp(root, args.engine, model, setups_dir=setups_dir)
     root.mainloop()
     return 0
