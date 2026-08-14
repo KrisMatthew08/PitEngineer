@@ -483,21 +483,21 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         any_of(("ARB_FRONT", "ARB_F"), "dec",
                "soften the front anti-roll bar to cut understeer (more front grip in roll)", frac=bal_frac)
         # Also try softening front springs for more mechanical front grip
-        any_of(("SPRING_RATE_LF", "SPRING_RATE_RF"), "dec",
+        all_of(("SPRING_RATE_LF", "SPRING_RATE_RF"), "dec",
                "softer front spring to add front grip through slow corners", frac=0.2)
     elif lean_os:
         any_of(("ARB_REAR", "ARB_R"), "dec",
                "soften the rear anti-roll bar to cut oversteer (more rear grip in roll)", frac=bal_frac)
         # Also try softening rear springs for more mechanical rear grip
-        any_of(("SPRING_RATE_LR", "SPRING_RATE_RR"), "dec",
+        all_of(("SPRING_RATE_LR", "SPRING_RATE_RR"), "dec",
                "softer rear spring to add rear grip and stability", frac=0.2)
 
     # 4) TOE - rear toe-in adds straight-line stability and reduces oversteer tendency.
     if lean_os and strong:
-        any_of(("TOE_OUT_LR", "TOE_OUT_RR"), "dec",
+        all_of(("TOE_OUT_LR", "TOE_OUT_RR"), "dec",
                "more rear toe-in for stability - reduces oversteer tendency on power", frac=0.25)
     elif lean_us and strong:
-        any_of(("TOE_OUT_LF", "TOE_OUT_RF"), "inc",
+        all_of(("TOE_OUT_LF", "TOE_OUT_RF"), "inc",
                "less front toe-in for more front turn-in response", frac=0.25)
 
     # 5) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
@@ -536,13 +536,18 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
     # 7) KERBS / ride height - bottoming, or a wheel skating over kerbs.
     if k.issue == "bottoming":
         end = "R" if "rear" in k.worst_wheel else "F"
-        any_of((f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"), "inc",
+        all_of((f"BUMP_STOP_RATE_L{end}", f"BUMP_STOP_RATE_R{end}"), "inc",
                "stiffen bump stops - the car bottoms over kerbs/compressions", frac=0.25, max_steps=3)
-        any_of((f"ROD_LENGTH_L{end}", f"ROD_LENGTH_R{end}", f"HEIGHT_{end}"), "inc",
-               "raise ride height a touch to stop bottoming", frac=0.2, max_steps=3)
+        # Ride height might be per-corner (ROD_LENGTH) or per-axle (HEIGHT_F)
+        changed_rods = False
+        for side in ("L", "R"):
+            if change(f"ROD_LENGTH_{side}{end}", "inc", "raise ride height a touch to stop bottoming", frac=0.2, max_steps=3):
+                changed_rods = True
+        if not changed_rods:
+            change(f"HEIGHT_{end}", "inc", "raise ride height a touch to stop bottoming", frac=0.2, max_steps=3)
     elif k.issue == "wheels_light":
         end = "R" if "rear" in k.worst_wheel else "F"
-        any_of((f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"), "dec",
+        all_of((f"DAMP_BUMP_L{end}", f"DAMP_BUMP_R{end}"), "dec",
                "soften bump damping so the wheel follows the kerb", frac=0.25, max_steps=3)
 
     if not changes:
