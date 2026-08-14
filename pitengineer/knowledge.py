@@ -51,7 +51,7 @@ TYRE_TEMP_COLD = 65.0
 # rolled towards zero/positive the tyre is on its outer edge (add camber), if
 # it's very negative it's riding the inner edge (reduce camber).
 CAMBER_LOADED_IDEAL_LO = -3.5
-CAMBER_LOADED_IDEAL_HI = -1.2
+CAMBER_LOADED_IDEAL_HI = -0.5
 
 
 @dataclass
