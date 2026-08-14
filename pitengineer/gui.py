@@ -20,6 +20,7 @@ from tkinter import filedialog, font as tkfont
 from tkinter import messagebox, scrolledtext
 
 from .app import _load_dotenv
+from . import __version__, BUILD_DATE
 from .car_data import (build_manifest_from_setups, find_current_setup,
                        track_setup_target)
 from .engines import make_engine
@@ -189,8 +190,9 @@ class AutoTuneApp:
         self.title_lbl = tk.Label(htext, text="Waiting for Assetto Corsa…",
                                   font=self.f_title, bg=BG, fg=FG, anchor="w")
         self.title_lbl.pack(anchor="w")
-        self.sub_lbl = tk.Label(htext, text=f"Engine: {self.engine.name}",
-                                font=self.f_sub, bg=BG, fg=MUTED, anchor="w")
+        self.sub_lbl = tk.Label(htext,
+                                 text=f"Engine: {self.engine.name}   ·   v{__version__}   ·   built {BUILD_DATE}",
+                                 font=self.f_sub, bg=BG, fg=MUTED, anchor="w")
         self.sub_lbl.pack(anchor="w")
         self.setups_lbl = tk.Label(htext, text=self._setups_dir_text(),
                        font=self.f_sub, bg=BG, fg=MUTED, anchor="w",
