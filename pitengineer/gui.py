@@ -327,8 +327,8 @@ class AutoTuneApp:
         if self.car and self.manifest:
             self.title_lbl.configure(text=f"{self.manifest.display_name}  ·  {self.track}")
             self.sub_lbl.configure(
-                text=f"{self.engine.name}   ·   AC: {status}   ·   "
-                     f"{len(self.manifest.parameters)} params   ·   "
+                text=f"{self.engine.name}   ·   v{__version__}   ·   built {BUILD_DATE}   ·   "
+                     f"AC: {status}   ·   {len(self.manifest.parameters)} params   ·   "
                      f"{self.setup_path.name if self.setup_path else '-'}")
         else:
             self.title_lbl.configure(text=f"Assetto Corsa: {status}")
