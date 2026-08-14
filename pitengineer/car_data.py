@@ -43,6 +43,28 @@ _SOFT_WIDEN = 4
 _WIDEN_CAMBER = 8
 _WIDEN_FRAC = 0.12
 
+# Physics-aware widening fractions for parameters with known typical AC ranges.
+# When a car's data.acd is encrypted and we only have a narrow observed range,
+# we widen symmetrically by this fraction of the observed centre value so the
+# AI has meaningful room to move. AC clamps any out-of-range value on load.
+_WIDEN_BY_TYPE = [
+    # (name_fragment,          widen_frac, floor_at_zero)
+    ("ARB",                    0.8,        True),
+    ("SPRING_RATE",            0.5,        True),
+    ("SPRING",                 0.5,        True),
+    ("DAMP",                   0.6,        True),
+    ("BUMPSTOP",               0.6,        True),
+    ("BUMP_STOP",              0.6,        True),
+    ("PRESSURE",               0.25,       True),
+    ("CAMBER",                 0.0,        False),  # handled separately
+    ("TOE",                    0.5,        False),
+    ("ROD_LENGTH",             0.4,        False),
+    ("DIFF",                   0.5,        True),
+    ("WING",                   0.5,        True),
+    ("BRAKE",                  0.3,        True),
+    ("GEAR",                   0.3,        True),
+]
+
 
 def default_setups_dir() -> Path:
     """Windows default: Documents/Assetto Corsa/setups."""
@@ -130,6 +152,34 @@ def _step_from(values: list[int]) -> int:
     return step or 1
 
 
+def _widen_for(section: str, v: int) -> tuple[int, int]:
+    """Return a widened (lo, hi) window for a single-valued parameter.
+
+    Uses physics-aware fractions for parameter types that have known AC ranges,
+    falling back to the legacy proportional heuristic for unknowns.
+    """
+    su = section.upper()
+    if "CAMBER" in su:
+        # Camber is negative (e.g. -30 = -3.0 deg); always widen generously.
+        widen = max(_WIDEN_CAMBER, round(abs(v) * 0.5))
+        return v - widen, v + widen
+
+    for fragment, frac, floor_zero in _WIDEN_BY_TYPE:
+        if fragment in su:
+            widen = max(_SOFT_WIDEN, round(abs(v) * frac))
+            lo, hi = v - widen, v + widen
+            if floor_zero:
+                lo = max(0, lo)
+            return lo, hi
+
+    # Generic fallback
+    widen = max(_SOFT_WIDEN, round(abs(v) * _WIDEN_FRAC))
+    lo, hi = v - widen, v + widen
+    if v >= 0:
+        lo = max(0, lo)
+    return lo, hi
+
+
 def build_manifest_from_setups(
     car_id: str,
     setups_dir: Path | None = None,
@@ -194,21 +244,19 @@ def build_manifest_from_setups(
         
         if mapped_min is not None and mapped_max is not None:
             lo, hi = mapped_min, mapped_max
-            step = _step_from(values) # Authoritative step is already baked into the index mapping
+            step = _step_from(values)
         else:
             lo, hi = min(values), max(values)
-            if lo == hi:
-                # Only one value ever seen: open a window around it so the AI has
-                # room to move. Widen symmetrically. Camber/toe are stored as SIGNED
-                # real values (negative), so we must NOT floor at 0 for those - only
-                # index-style params (pressures, wing clicks) stay non-negative.
-                v = lo
-                base = _WIDEN_CAMBER if "CAMBER" in section.upper() else _SOFT_WIDEN
-                widen = max(base, round(abs(v) * _WIDEN_FRAC))
-                lo, hi = v - widen, v + widen
-                if v >= 0:
-                    lo = max(0, lo)
-            if lo > hi:                       # never emit an inverted range
+            span = hi - lo
+            # If the observed range is very narrow (the driver rarely changes
+            # this parameter), widen it using physics-aware heuristics so the
+            # AI always has room to move, regardless of how many setups exist.
+            v = (lo + hi) // 2
+            wlo, whi = _widen_for(section, v)
+            # Only widen outward — never shrink an observed range.
+            lo = min(lo, wlo)
+            hi = max(hi, whi)
+            if lo > hi:
                 lo, hi = hi, lo
             step = _step_from(values)
 

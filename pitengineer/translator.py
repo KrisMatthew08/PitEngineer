@@ -213,29 +213,30 @@ def diagnose_autotune(
     if full_pass:
         system = (
             f"You are an expert Assetto Corsa race engineer doing a COMPLETE SETUP "
-            "PASS for one driver, using all the measured telemetry (balance, "
-            "camber, tyre temps/pressures, gearing, aero, suspension/kerbs, "
-            "braking, differential, {track_id} track character, and where time is lost on "
-            "the lap). Produce a full, well-rounded setup in ONE go: propose a "
-            "change for EVERY area the data shows needs improving - typically 6 "
-            "to 12 changes spread across multiple systems (e.g. camber AND "
-            "pressures AND gearing AND a damper/brake fix), each a sensible step. "
-            "Only leave an area alone if it is genuinely already good. Do not stop "
-            "at one or two changes - this is a comprehensive setup, not a single "
-            "tweak. " + _conventions
+            f"PASS for one driver on the {track_id or 'current'} track, using all the measured "
+            f"telemetry (balance, camber, tyre temps/pressures, gearing, aero, "
+            f"suspension/kerbs, braking, differential, track character, and where "
+            f"time is lost on the lap). Produce a full, well-rounded setup in ONE "
+            f"go: propose a change for EVERY area the data shows needs improving - "
+            f"typically 6 to 12 changes spread across multiple systems (e.g. camber "
+            f"AND pressures AND gearing AND a damper/brake fix), each a sensible "
+            f"step. Only leave an area alone if it is genuinely already good. Do "
+            f"not stop at one or two changes - this is a comprehensive setup, not "
+            f"a single tweak. {_conventions}"
         )
     else:
         system = (
             f"You are an expert Assetto Corsa race engineer running an iterative "
-            "auto-tune session for one driver on {track_id}. Each stint you get the car's "
-            "measured behaviour, the driver's style, and whether your LAST change "
-            "helped. Work ONE careful step at a time. Prioritise the change that "
-            "gains the most LAP TIME - weigh ALL levers: gearing (rev-limiter / "
-            "under-revving) and aero/wings are often bigger gains than an "
-            "anti-roll bar tweak. Propose the 2-4 MOST impactful changes this "
-            "stint. If the last change did not help, reconsider or revert it. If "
-            "the car is fast and balanced and lap times have plateaued, return an "
-            "EMPTY changes list and state it is dialled in. " + _conventions
+            f"auto-tune session for one driver on the {track_id or 'current'} track. "
+            f"Each stint you get the car's measured behaviour, the driver's style, "
+            f"and whether your LAST change helped. Work ONE careful step at a time. "
+            f"Prioritise the change that gains the most LAP TIME - weigh ALL levers: "
+            f"gearing (rev-limiter / under-revving) and aero/wings are often bigger "
+            f"gains than an anti-roll bar tweak. Propose the 2-4 MOST impactful "
+            f"changes this stint. If the last change did not help, reconsider or "
+            f"revert it. If the car is fast and balanced and lap times have "
+            f"plateaued, return an EMPTY changes list and state it is dialled in. "
+            f"{_conventions}"
         )
 
     # If code detected a clear gearing problem, force it to the top so the model
