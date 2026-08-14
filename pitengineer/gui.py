@@ -231,18 +231,21 @@ class AutoTuneApp:
                                    wraplength=760)
         self.corner_lbl.pack(fill="x", padx=12, pady=(2, 10))
 
+        # Split container for Hero (left) and Details (right)
+        split_frame = tk.Frame(self.root, bg=BG)
+        split_frame.pack(fill="both", expand=True, padx=pad, pady=6)
+
         # Hero: proposed change card
-        hero = self._panel(self.root)
-        hero.pack(fill="x", padx=pad, pady=6)
+        hero = self._panel(split_frame)
+        hero.pack(side="left", fill="both", expand=True, padx=(0, 6))
         bar = tk.Frame(hero, bg=ACCENT, height=3)
         bar.pack(fill="x")
         tk.Label(hero, text="PROPOSED CHANGE", font=self.f_h, bg=PANEL,
                  fg=ACCENT).pack(anchor="w", padx=12, pady=(10, 4))
         
-        # Scrollable change box (max height so bottom bar stays visible)
-        change_wrap = tk.Frame(hero, bg=PANEL, height=200)
+        # Scrollable change box
+        change_wrap = tk.Frame(hero, bg=PANEL)
         change_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
-        change_wrap.pack_propagate(False)
         change_canvas = tk.Canvas(change_wrap, bg=PANEL, bd=0, highlightthickness=0)
         change_scrollbar = tk.Scrollbar(change_wrap, orient="vertical", command=change_canvas.yview)
         self.change_box = tk.Frame(change_canvas, bg=PANEL)
@@ -269,8 +272,8 @@ class AutoTuneApp:
         self.apply_btn.pack(anchor="e", padx=12, pady=(0, 12))
 
         # Detail log (full debrief text, scrollable)
-        logwrap = self._panel(self.root)
-        logwrap.pack(fill="both", expand=True, padx=pad, pady=6)
+        logwrap = self._panel(split_frame)
+        logwrap.pack(side="right", fill="both", expand=True, padx=(6, 0))
         tk.Label(logwrap, text="DETAILS", font=self.f_h, bg=PANEL,
                  fg=MUTED).pack(anchor="w", padx=12, pady=(8, 0))
         self.log = scrolledtext.ScrolledText(
