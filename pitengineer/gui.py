@@ -114,13 +114,13 @@ class AutoTuneApp:
 
     # ---------- fonts ----------
     def _fonts(self) -> None:
-        self.f_title = tkfont.Font(family="Segoe UI Semibold", size=15)
-        self.f_sub = tkfont.Font(family="Segoe UI", size=9)
-        self.f_tile_val = tkfont.Font(family="Segoe UI", size=20, weight="bold")
-        self.f_tile_cap = tkfont.Font(family="Segoe UI", size=8)
-        self.f_h = tkfont.Font(family="Segoe UI Semibold", size=10)
-        self.f_body = tkfont.Font(family="Segoe UI", size=10)
-        self.f_change = tkfont.Font(family="Consolas", size=11, weight="bold")
+        self.f_title = tkfont.Font(family="Segoe UI Semibold", size=16)
+        self.f_sub = tkfont.Font(family="Segoe UI", size=10)
+        self.f_tile_val = tkfont.Font(family="Segoe UI", size=24, weight="bold")
+        self.f_tile_cap = tkfont.Font(family="Segoe UI Semibold", size=9)
+        self.f_h = tkfont.Font(family="Segoe UI Semibold", size=11)
+        self.f_body = tkfont.Font(family="Segoe UI", size=11)
+        self.f_change = tkfont.Font(family="Segoe UI Semibold", size=12)
         self.f_btn = tkfont.Font(family="Segoe UI Semibold", size=11)
 
     # ---------- widget helpers ----------
@@ -213,8 +213,8 @@ class AutoTuneApp:
             card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
             tiles.columnconfigure(i, weight=1)
             val = tk.Label(card, text="—", font=self.f_tile_val, bg=PANEL, fg=FG)
-            val.pack(pady=(12, 0))
-            tk.Label(card, text=cap, font=self.f_tile_cap, bg=PANEL, fg=MUTED).pack(pady=(0, 10))
+            val.pack(pady=(16, 2))
+            tk.Label(card, text=cap, font=self.f_tile_cap, bg=PANEL, fg=MUTED).pack(pady=(2, 12))
             self.tiles[key] = val
 
         # Info panel (balance / tyres / corner)
@@ -222,14 +222,14 @@ class AutoTuneApp:
         info.pack(fill="x", padx=pad, pady=6)
         self.balance_lbl = tk.Label(info, text="Balance: —", font=self.f_body,
                                     bg=PANEL, fg=FG, anchor="w", justify="left")
-        self.balance_lbl.pack(fill="x", padx=12, pady=(10, 2))
+        self.balance_lbl.pack(fill="x", padx=16, pady=(16, 6))
         self.tyres_lbl = tk.Label(info, text="Tyres: —", font=self.f_body,
                                   bg=PANEL, fg=FG, anchor="w")
-        self.tyres_lbl.pack(fill="x", padx=12, pady=2)
+        self.tyres_lbl.pack(fill="x", padx=16, pady=2)
         self.corner_lbl = tk.Label(info, text="Time loss: —", font=self.f_body,
                                    bg=PANEL, fg=WARN, anchor="w", justify="left",
                                    wraplength=760)
-        self.corner_lbl.pack(fill="x", padx=12, pady=(2, 10))
+        self.corner_lbl.pack(fill="x", padx=16, pady=(6, 16))
 
         # Split container for Hero (left) and Details (right)
         split_frame = tk.Frame(self.root, bg=BG)
@@ -278,7 +278,7 @@ class AutoTuneApp:
                  fg=MUTED).pack(anchor="w", padx=12, pady=(8, 0))
         self.log = scrolledtext.ScrolledText(
             logwrap, wrap="word", height=8, bg=PANEL, fg=MUTED, bd=0,
-            font=("Consolas", 9), insertbackground=FG, relief="flat")
+            font=("Consolas", 10), insertbackground=FG, relief="flat")
         self.log.pack(fill="both", expand=True, padx=10, pady=(2, 10))
         self.log.configure(state="disabled")
 
@@ -464,14 +464,20 @@ class AutoTuneApp:
         if diag.changes:
             for c_ in diag.changes:
                 row = tk.Frame(self.change_box, bg=PANEL)
-                row.pack(fill="x", pady=2)
-                arrow = (f"{c_.label}   {c_.human_current(self.manifest)} → "
-                         f"{c_.human_proposed(self.manifest)}")
-                tk.Label(row, text=arrow, font=self.f_change, bg=PANEL, fg=FG,
-                         anchor="w").pack(anchor="w")
-                tk.Label(row, text=f"   {c_.reason}  ({c_.confidence})",
-                         font=self.f_sub, bg=PANEL, fg=MUTED, anchor="w",
-                         wraplength=740, justify="left").pack(anchor="w")
+                row.pack(fill="x", pady=(0, 16))
+                
+                # Make the parameter name and values cleaner
+                param_name = tk.Label(row, text=f"{c_.label}", font=self.f_change, bg=PANEL, fg=FG)
+                param_name.pack(side="left", anchor="nw")
+                
+                arrow = tk.Label(row, text=f"  {c_.human_current(self.manifest)} → {c_.human_proposed(self.manifest)}", 
+                                 font=("Consolas", 11, "bold"), bg=PANEL, fg=GOOD)
+                arrow.pack(side="left", anchor="nw")
+                
+                reason_lbl = tk.Label(row, text=f"\n{c_.reason}  ({c_.confidence})",
+                                      font=self.f_body, bg=PANEL, fg=MUTED, anchor="w",
+                                      wraplength=740, justify="left")
+                reason_lbl.pack(side="left", fill="x", expand=True, anchor="w")
             self.pending = diag
             self.apply_btn.configure(state="normal")
             self._status("Review the proposed change, then Apply & continue.")
