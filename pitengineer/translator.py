@@ -267,8 +267,9 @@ def diagnose_autotune(
         + ("Do the COMPLETE setup pass now: propose a change for every area above "
            "that needs improving (aim for 6-12 changes across multiple systems)."
            if full_pass else
-           "Decide the next step: either propose the next change(s), or return an "
-           "empty changes list if it's dialled in.")
+           "Propose 2-4 CONCRETE changes this stint. Do NOT focus on just one "
+           "system - address balance (ARBs, camber), tyres (pressures), AND any "
+           "gearing or aero issue the data shows. Be specific with the index numbers.")
     )
 
     result = engine.propose(system, user, CHANGES_SCHEMA)
@@ -379,6 +380,13 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
         return True
 
     def any_of(sections, direction, reason, **kw):
+        """Try each section in order, apply the FIRST one that actually moves."""
+        for sec in sections:
+            if change(sec, direction, reason, **kw):
+                return  # first success is enough
+
+    def all_of(sections, direction, reason, **kw):
+        """Apply to ALL sections (e.g. both sides of one axle)."""
         for sec in sections:
             change(sec, direction, reason, **kw)
 
@@ -397,49 +405,66 @@ def _rule_based_full_pass(report, setup: Setup, manifest: CarManifest) -> Diagno
     aggressive = prof.aggression > 0.6 or prof.consistency < 0.4
     trailbraker = prof.trail_brake > 0.5
 
-    # 1) CAMBER - move decisively toward the grip window (direction from the
-    #    dynamic-camber analysis; more negative = "add").
+    # 1) CAMBER - one axle at a time so it doesn't eat the whole budget.
     if cam.front_advice == "add":
-        any_of(("CAMBER_LF", "CAMBER_RF"), "dec",
-               "add front camber - the loaded front was rolling onto its outer edge", frac=0.5)
+        all_of(("CAMBER_LF", "CAMBER_RF"), "dec",
+               "add front camber - the loaded front was rolling onto its outer edge", frac=0.25)
     elif cam.front_advice == "reduce":
-        any_of(("CAMBER_LF", "CAMBER_RF"), "inc",
-               "reduce front camber - it was riding the inner edge", frac=0.5)
+        all_of(("CAMBER_LF", "CAMBER_RF"), "inc",
+               "reduce front camber - it was riding the inner edge", frac=0.25)
     if cam.rear_advice == "add":
-        any_of(("CAMBER_LR", "CAMBER_RR"), "dec",
-               "add rear camber for more rear grip under load", frac=0.5)
+        all_of(("CAMBER_LR", "CAMBER_RR"), "dec",
+               "add rear camber for more rear grip under load", frac=0.25)
     elif cam.rear_advice == "reduce":
-        any_of(("CAMBER_LR", "CAMBER_RR"), "inc",
-               "reduce rear camber - too much under load", frac=0.5)
+        all_of(("CAMBER_LR", "CAMBER_RR"), "inc",
+               "reduce rear camber - too much under load", frac=0.25)
 
-    # 2) TYRE PRESSURES - toward the ~26-28 psi hot window (measured). Small,
-    #    careful moves (pressure is sensitive).
+    # 2) TYRE PRESSURES - toward the ~26-28 psi hot window (measured).
+    #    The cold-setup index controls starting pressure. Each cold index unit
+    #    maps to roughly 1-2 psi hot, so we step 1-2 ticks toward the window.
     if pr.front_psi > 5:
         if pr.front_psi > PRESSURE_HOT_IDEAL_HI:
-            any_of(("PRESSURE_LF", "PRESSURE_RF"), "dec",
-                   f"front hot pressure high ({pr.front_psi:.1f} psi) - lower toward ~27", frac=0.25, max_steps=2)
+            all_of(("PRESSURE_LF", "PRESSURE_RF"), "dec",
+                   f"front hot pressure high ({pr.front_psi:.1f} psi) - lower starting pressure",
+                   frac=0.15, max_steps=2)
         elif pr.front_psi < PRESSURE_HOT_IDEAL_LO:
-            any_of(("PRESSURE_LF", "PRESSURE_RF"), "inc",
-                   f"front hot pressure low ({pr.front_psi:.1f} psi) - raise toward ~27", frac=0.25, max_steps=2)
+            all_of(("PRESSURE_LF", "PRESSURE_RF"), "inc",
+                   f"front hot pressure low ({pr.front_psi:.1f} psi) - raise starting pressure toward ~27 psi hot",
+                   frac=0.15, max_steps=2)
     if pr.rear_psi > 5:
         if pr.rear_psi > PRESSURE_HOT_IDEAL_HI:
-            any_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "dec",
-                   f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower toward ~27", frac=0.25, max_steps=2)
+            all_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "dec",
+                   f"rear hot pressure high ({pr.rear_psi:.1f} psi) - lower starting pressure",
+                   frac=0.15, max_steps=2)
         elif pr.rear_psi < PRESSURE_HOT_IDEAL_LO:
-            any_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "inc",
-                   f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise toward ~27", frac=0.25, max_steps=2)
+            all_of(("PRESSURE_LR", "PRESSURE_RR", "PRESSURE_RL"), "inc",
+                   f"rear hot pressure low ({pr.rear_psi:.1f} psi) - raise starting pressure toward ~27 psi hot",
+                   frac=0.15, max_steps=2)
 
-    # 3) BALANCE - anti-roll bars (softer end = lower). Any lean acts; strength
-    #    scales how far we move.
+    # 3) BALANCE - anti-roll bars (softer end = lower index).
     bal_frac = 0.35 if strong else 0.2
     if lean_us:
         any_of(("ARB_FRONT", "ARB_F"), "dec",
                "soften the front anti-roll bar to cut understeer (more front grip in roll)", frac=bal_frac)
+        # Also try softening front springs for more mechanical front grip
+        any_of(("SPRING_RATE_LF", "SPRING_RATE_RF"), "dec",
+               "softer front spring to add front grip through slow corners", frac=0.2)
     elif lean_os:
         any_of(("ARB_REAR", "ARB_R"), "dec",
                "soften the rear anti-roll bar to cut oversteer (more rear grip in roll)", frac=bal_frac)
+        # Also try softening rear springs for more mechanical rear grip
+        any_of(("SPRING_RATE_LR", "SPRING_RATE_RR"), "dec",
+               "softer rear spring to add rear grip and stability", frac=0.2)
 
-    # 4) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
+    # 4) TOE - rear toe-in adds straight-line stability and reduces oversteer tendency.
+    if lean_os and strong:
+        any_of(("TOE_OUT_LR", "TOE_OUT_RR"), "dec",
+               "more rear toe-in for stability - reduces oversteer tendency on power", frac=0.25)
+    elif lean_us and strong:
+        any_of(("TOE_OUT_LF", "TOE_OUT_RF"), "inc",
+               "less front toe-in for more front turn-in response", frac=0.25)
+
+    # 5) BRAKES - from lock-ups; trail-brakers want a stable rear on entry.
     if b.front_lock:
         any_of(("FRONT_BIAS", "BRAKE_BIAS"), "dec",
                "fronts lock under braking - shift brake bias rearward", frac=0.2, max_steps=4)
